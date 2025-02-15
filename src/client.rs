@@ -1,6 +1,7 @@
 use chrono::{TimeZone, Utc};
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::Client;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::error::Error;
 
@@ -12,8 +13,9 @@ type HmacSha256 = Hmac<Sha256>;
 /// Tencent Cloud SDK Client
 ///
 /// This client is used to send authenticated requests to Tencent Cloud APIs.
-/// It internally builds the canonical request string, computes the TC3-HMAC-SHA256 signature,
-/// sets the appropriate headers, and sends an HTTPS POST request.
+/// It constructs the canonical request string, computes the TC3-HMAC-SHA256 signature,
+/// builds the necessary headers, and sends an HTTPS POST request.
+/// This version returns the response as a `serde_json::Value`, preserving Chinese characters.
 pub struct TencentCloudClient {
     /// Your Tencent Cloud SecretId.
     pub secret_id: String,
@@ -44,6 +46,9 @@ impl TencentCloudClient {
     /// This method constructs the canonical request, computes the TC3-HMAC-SHA256 signature,
     /// builds the Authorization header, and sends an HTTPS POST request.
     ///
+    /// Instead of returning plain text, this version parses the response as JSON
+    /// and returns a `serde_json::Value`, which preserves Chinese characters.
+    ///
     /// # Arguments
     ///
     /// * `service` - The service name (e.g., "cvm").
@@ -55,7 +60,8 @@ impl TencentCloudClient {
     ///
     /// # Returns
     ///
-    /// A `Result` containing the response text on success, or a boxed error on failure.
+    /// A `Result` containing the response parsed as `serde_json::Value` on success,
+    /// or a boxed error on failure.
     pub async fn request(
         &self,
         service: &str,
@@ -64,7 +70,7 @@ impl TencentCloudClient {
         version: &str,
         action: &str,
         payload: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    ) -> Result<Value, Box<dyn Error>> {
         let algorithm = "TC3-HMAC-SHA256";
         let ct = "application/json; charset=utf-8";
 
@@ -131,10 +137,7 @@ impl TencentCloudClient {
         headers.insert("Content-Type", HeaderValue::from_static(ct));
         headers.insert("Host", HeaderValue::from_str(host)?);
         headers.insert("X-TC-Action", HeaderValue::from_str(action)?);
-        headers.insert(
-            "X-TC-Timestamp",
-            HeaderValue::from_str(&timestamp.to_string())?,
-        );
+        headers.insert("X-TC-Timestamp", HeaderValue::from_str(&timestamp.to_string())?);
         headers.insert("X-TC-Version", HeaderValue::from_str(version)?);
         if let Some(r) = region {
             headers.insert("X-TC-Region", HeaderValue::from_str(r)?);
@@ -145,15 +148,14 @@ impl TencentCloudClient {
 
         let url = format!("https://{}", host);
         let client = Client::new();
-        let resp = client
+        let resp_json: Value = client
             .post(&url)
             .headers(headers)
             .body(payload.to_owned())
             .send()
             .await?
-            .text()
+            .json()
             .await?;
-
-        Ok(resp)
+        Ok(resp_json)
     }
 }

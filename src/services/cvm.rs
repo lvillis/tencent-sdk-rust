@@ -24,7 +24,7 @@ use std::error::Error;
 /// | TotalCount   | Integer | 符合条件的实例数量                                 |
 /// | InstanceSet  | Array   | 实例详细信息列表（具体字段参见腾讯云文档）           |
 /// | RequestId    | String  | 唯一请求ID，用于问题定位                           |
-pub async fn describe_instances(client: &TencentCloudClient) -> Result<String, Box<dyn Error>> {
+pub async fn describe_instances(client: &TencentCloudClient) -> Result<serde_json::Value, Box<dyn Error>> {
     client.request(
         "cvm",
         "cvm.tencentcloudapi.com",
@@ -66,7 +66,7 @@ pub async fn reset_instances_password(
     password: &str,
     username: Option<&str>,
     force_stop: Option<bool>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<serde_json::Value, Box<dyn Error>> {
     let mut payload_map = Map::new();
     payload_map.insert("InstanceIds".to_string(), json!(instance_ids));
     payload_map.insert("Password".to_string(), json!(password));
@@ -114,7 +114,7 @@ pub async fn describe_instance_vnc_url(
     client: &TencentCloudClient,
     region: &str,
     instance_id: &str,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<serde_json::Value, Box<dyn Error>> {
     let payload = json!({ "InstanceId": instance_id }).to_string();
 
     client.request(
@@ -152,7 +152,7 @@ pub async fn start_instances(
     client: &TencentCloudClient,
     region: &str,
     instance_ids: Vec<&str>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<serde_json::Value, Box<dyn Error>> {
     let payload = json!({ "InstanceIds": instance_ids }).to_string();
 
     client.request(
@@ -192,7 +192,7 @@ pub async fn reboot_instances(
     region: &str,
     instance_ids: Vec<&str>,
     stop_type: Option<&str>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<serde_json::Value, Box<dyn Error>> {
     let payload = {
         let mut map = Map::new();
         map.insert("InstanceIds".to_string(), json!(instance_ids));
@@ -239,7 +239,7 @@ pub async fn stop_instances(
     instance_ids: Vec<&str>,
     stop_type: Option<&str>,
     stopped_mode: Option<&str>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<serde_json::Value, Box<dyn Error>> {
     let payload = {
         let mut map = Map::new();
         map.insert("InstanceIds".to_string(), json!(instance_ids));
@@ -285,7 +285,7 @@ pub async fn modify_instances_project(
     region: &str,
     instance_ids: Vec<&str>,
     project_id: i32,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<serde_json::Value, Box<dyn Error>> {
     let payload = {
         let mut map = Map::new();
         map.insert("InstanceIds".to_string(), json!(instance_ids));
@@ -322,7 +322,7 @@ mod tests {
         match describe_instances(&client).await {
             Ok(resp) => {
                 println!("DescribeInstances 响应:\n{}", resp);
-                assert!(!resp.is_empty());
+                assert!(!resp.is_null());
             }
             Err(e) => eprintln!("调用 DescribeInstances 时出错: {}", e),
         }
@@ -344,7 +344,7 @@ mod tests {
         ).await {
             Ok(resp) => {
                 println!("ResetInstancesPassword 响应:\n{}", resp);
-                assert!(!resp.is_empty());
+                assert!(!resp.is_null());
             }
             Err(e) => eprintln!("调用 ResetInstancesPassword 时出错: {}", e),
         }
@@ -356,7 +356,7 @@ mod tests {
         match describe_instance_vnc_url(&client, TEST_REGION, TEST_INSTANCE_ID).await {
             Ok(resp) => {
                 println!("DescribeInstanceVncUrl 响应:\n{}", resp);
-                assert!(!resp.is_empty());
+                assert!(!resp.is_null());
             }
             Err(e) => eprintln!("调用 DescribeInstanceVncUrl 时出错: {}", e),
         }
@@ -368,7 +368,7 @@ mod tests {
         match start_instances(&client, TEST_REGION, TEST_INSTANCE_IDS.to_vec()).await {
             Ok(resp) => {
                 println!("StartInstances 响应:\n{}", resp);
-                assert!(!resp.is_empty());
+                assert!(!resp.is_null());
             }
             Err(e) => eprintln!("调用 StartInstances 时出错: {}", e),
         }
@@ -380,7 +380,7 @@ mod tests {
         match reboot_instances(&client, TEST_REGION, TEST_INSTANCE_IDS.to_vec(), Some("SOFT")).await {
             Ok(resp) => {
                 println!("RebootInstances 响应:\n{}", resp);
-                assert!(!resp.is_empty());
+                assert!(!resp.is_null());
             }
             Err(e) => eprintln!("调用 RebootInstances 时出错: {}", e),
         }
@@ -392,7 +392,7 @@ mod tests {
         match stop_instances(&client, TEST_REGION, TEST_INSTANCE_IDS.to_vec(), Some("SOFT"), Some("KEEP_CHARGING")).await {
             Ok(resp) => {
                 println!("StopInstances 响应:\n{}", resp);
-                assert!(!resp.is_empty());
+                assert!(!resp.is_null());
             }
             Err(e) => eprintln!("调用 StopInstances 时出错: {}", e),
         }
@@ -404,7 +404,7 @@ mod tests {
         match modify_instances_project(&client, TEST_REGION, TEST_INSTANCE_IDS.to_vec(), TEST_PROJECT_ID).await {
             Ok(resp) => {
                 println!("ModifyInstancesProject 响应:\n{}", resp);
-                assert!(!resp.is_empty());
+                assert!(!resp.is_null());
             }
             Err(e) => eprintln!("调用 ModifyInstancesProject 时出错: {}", e),
         }

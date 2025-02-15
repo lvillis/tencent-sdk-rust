@@ -1,5 +1,5 @@
 use crate::client::TencentCloudClient;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::error::Error;
 
 /// 查看标签项目列表 - DescribeProjects
@@ -31,13 +31,13 @@ pub async fn describe_projects(
     all_list: Option<i32>,
     limit: Option<i32>,
     offset: Option<i32>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<Value, Box<dyn Error>> {
     let payload = json!({
         "AllList": all_list.unwrap_or(1),
         "Limit": limit.unwrap_or(1000),
         "Offset": offset.unwrap_or(0)
     })
-        .to_string();
+    .to_string();
 
     client
         .request(
@@ -65,7 +65,7 @@ mod tests {
         match describe_projects(&client, None, None, None).await {
             Ok(resp) => {
                 println!("DescribeProjects 响应:\n{}", resp);
-                assert!(!resp.is_empty());
+                assert!(!resp.is_null());
             }
             Err(e) => eprintln!("调用 DescribeProjects 时出错: {}", e),
         }

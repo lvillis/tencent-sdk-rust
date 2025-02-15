@@ -35,7 +35,7 @@ use std::error::Error;
 /// | RequestId                   | String  | 唯一请求 ID，用于问题定位                                    |
 pub async fn describe_account_balance(
     client: &TencentCloudClient,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<serde_json::Value, Box<dyn Error>> {
     client
         .request(
             "billing",
@@ -62,7 +62,7 @@ mod tests {
         match describe_account_balance(&client).await {
             Ok(resp) => {
                 println!("DescribeAccountBalance 响应:\n{}", resp);
-                assert!(!resp.is_empty());
+                assert!(!resp.is_null());
             }
             Err(e) => eprintln!("调用 DescribeAccountBalance 时出错: {}", e),
         }
