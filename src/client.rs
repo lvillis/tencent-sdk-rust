@@ -147,7 +147,10 @@ impl TencentCloudClient {
         }
 
         let url = format!("https://{}", host);
-        let client = Client::new();
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("build Client error");
         let resp_json: Value = client
             .post(&url)
             .headers(headers)

@@ -9,6 +9,9 @@
     <img src="https://img.shields.io/crates/v/tencent-sdk.svg" alt="crates.io version">
   </a>
   <a href="https://crates.io/crates/tencent-sdk">
+    <img src="https://img.shields.io/crates/dr/tencent-sdk?color=ba86eb&logo=Handshake&logoColor=ea6aa6" alt="crates.io version">
+  </a>
+  <a href="https://crates.io/crates/tencent-sdk">
     <img src="https://img.shields.io/github/repo-size/lvillis/tencent-sdk-rust?style=flat-square&color=328657" alt="crates.io version">
   </a>
   <a href="https://github.com/lvillis/tencent-sdk-rust/actions">
