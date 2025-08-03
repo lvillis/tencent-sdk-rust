@@ -19,7 +19,7 @@ exclude = [
 ]
 
 [dependencies]
-tokio = { version = "1.46.0", default-features = false, features = ["rt", "macros"] }
+tokio = { version = "1.47.1", default-features = false, features = ["rt", "macros"] }
 reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls"] }
 chrono = "0.4.41"
 hmac = "0.12.1"
