@@ -1,412 +1,607 @@
-use crate::client::TencentCloudClient;
+use crate::{
+    client::{TencentCloudAsync, TencentCloudBlocking},
+    core::{Endpoint, TencentCloudResult},
+};
+use serde::Deserialize;
 use serde_json::{json, Map, Value};
-use std::error::Error;
+use std::borrow::Cow;
 
-/// 查看实例列表 - DescribeInstances
-///
-/// **接口描述**：
-/// - 接口请求域名：cvm.tencentcloudapi.com
-/// - 默认接口请求频率限制：40次/秒
-///
-/// **入参说明**：
-///
-/// | 参数    | 类型   | 说明                                       |
-/// |---------|--------|--------------------------------------------|
-/// | Action  | String | 固定为 `"DescribeInstances"`               |
-/// | Version | String | 固定为 `"2017-03-12"`                      |
-/// | Region  | String | 必填，指定区域（例如："ap-shanghai"）       |
-/// | Body    | JSON   | 固定为 `{}`（无业务参数）                  |
-///
-/// **出参说明**：
-///
-/// | 字段         | 类型    | 说明                                               |
-/// |--------------|---------|----------------------------------------------------|
-/// | TotalCount   | Integer | 符合条件的实例数量                                 |
-/// | InstanceSet  | Array   | 实例详细信息列表（具体字段参见腾讯云文档）           |
-/// | RequestId    | String  | 唯一请求ID，用于问题定位                           |
-pub async fn describe_instances(client: &TencentCloudClient) -> Result<serde_json::Value, Box<dyn Error>> {
-    client.request(
-        "cvm",
-        "cvm.tencentcloudapi.com",
-        Some("ap-shanghai"),
-        "2017-03-12",
-        "DescribeInstances",
-        "{}",
-    ).await
+#[derive(Debug, Deserialize)]
+pub struct DescribeInstancesResponse {
+    #[serde(rename = "Response")]
+    pub response: DescribeInstancesResult,
 }
 
-/// 重置实例密码 - ResetInstancesPassword
+#[derive(Debug, Deserialize)]
+pub struct DescribeInstancesResult {
+    #[serde(rename = "TotalCount")]
+    pub total_count: Option<u64>,
+    #[serde(rename = "InstanceSet")]
+    pub instance_set: Option<Vec<Value>>,
+    #[serde(rename = "RequestId")]
+    pub request_id: String,
+}
+
+/// Request wrapper for CVM `DescribeInstances`.
 ///
-/// **接口描述**：
-/// - 接口请求域名：cvm.tencentcloudapi.com
-/// - 默认接口请求频率限制：10次/秒
+/// | Field | Type | Required | Description |
+/// |-------|------|----------|-------------|
+/// | `region` | `Option<&str>` | Yes* | Specify an explicit region or rely on the client default. |
+/// | `filters` | `Option<Value>` | No | Tencent Cloud filter objects to scope the query. |
+/// | `limit` | `Option<u32>` | No | Page size, maximum 100. |
+/// | `offset` | `Option<u32>` | No | Pagination offset. |
 ///
-/// **入参说明**：
-///
-/// | 参数         | 类型    | 说明                                                                               |
-/// |--------------|---------|------------------------------------------------------------------------------------|
-/// | Action       | String  | 固定为 `"ResetInstancesPassword"`                                                 |
-/// | Version      | String  | 固定为 `"2017-03-12"`                                                              |
-/// | Region       | String  | 必填，指定区域（例如："ap-shanghai"）                                               |
-/// | InstanceIds  | Array   | 必填，实例ID数组（每次最多支持100个实例ID）                                         |
-/// | Password     | String  | 必填，重置后的登录密码（需符合系统密码复杂度要求）                                   |
-/// | UserName     | String  | 可选，待重置密码的操作系统用户名（不传则使用默认管理员账号）                          |
-/// | ForceStop    | Boolean | 可选，是否对运行中实例进行强制关机，默认 false                                      |
-/// | Body         | JSON    | 由上述参数构成的 JSON 字符串                                                       |
-///
-/// **出参说明**：
-///
-/// | 字段     | 类型   | 说明           |
-/// |----------|--------|----------------|
-/// | RequestId| String | 唯一请求ID     |
-pub async fn reset_instances_password(
-    client: &TencentCloudClient,
-    region: &str,
-    instance_ids: Vec<&str>,
-    password: &str,
-    username: Option<&str>,
-    force_stop: Option<bool>,
-) -> Result<serde_json::Value, Box<dyn Error>> {
-    let mut payload_map = Map::new();
-    payload_map.insert("InstanceIds".to_string(), json!(instance_ids));
-    payload_map.insert("Password".to_string(), json!(password));
-    if let Some(user) = username {
-        payload_map.insert("UserName".to_string(), json!(user));
+/// *Required unless `TencentCloudAsync::with_default_region` (or blocking equivalent) was set.
+pub struct DescribeInstances<'a> {
+    pub region: Option<&'a str>,
+    pub filters: Option<Value>,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+}
+
+impl<'a> Endpoint for DescribeInstances<'a> {
+    type Output = DescribeInstancesResponse;
+
+    fn service(&self) -> Cow<'static, str> {
+        Cow::Borrowed("cvm")
     }
-    if let Some(force) = force_stop {
-        payload_map.insert("ForceStop".to_string(), json!(force));
+
+    fn action(&self) -> Cow<'static, str> {
+        Cow::Borrowed("DescribeInstances")
     }
-    let payload = Value::Object(payload_map).to_string();
 
-    client.request(
-        "cvm",
-        "cvm.tencentcloudapi.com",
-        Some(region),
-        "2017-03-12",
-        "ResetInstancesPassword",
-        &payload,
-    ).await
-}
+    fn version(&self) -> Cow<'static, str> {
+        Cow::Borrowed("2017-03-12")
+    }
 
-/// 查询实例管理终端地址 - DescribeInstanceVncUrl
-///
-/// **接口描述**：
-/// - 接口请求域名：cvm.tencentcloudapi.com
-/// - 默认接口请求频率限制：10次/秒
-///
-/// **入参说明**：
-///
-/// | 参数       | 类型   | 说明                                           |
-/// |------------|--------|------------------------------------------------|
-/// | Action     | String | 固定为 `"DescribeInstanceVncUrl"`               |
-/// | Version    | String | 固定为 `"2017-03-12"`                          |
-/// | Region     | String | 必填，指定区域（例如："ap-shanghai"）           |
-/// | InstanceId | String | 必填，指定单个实例ID                           |
-/// | Body       | JSON   | 固定为 `{"InstanceId": "<实例ID>"}`            |
-///
-/// **出参说明**：
-///
-/// | 字段           | 类型   | 说明                                               |
-/// |----------------|--------|----------------------------------------------------|
-/// | InstanceVncUrl | String | 实例的管理终端地址（VNC 地址）                     |
-/// | RequestId      | String | 唯一请求ID，用于问题定位                           |
-pub async fn describe_instance_vnc_url(
-    client: &TencentCloudClient,
-    region: &str,
-    instance_id: &str,
-) -> Result<serde_json::Value, Box<dyn Error>> {
-    let payload = json!({ "InstanceId": instance_id }).to_string();
+    fn region(&self) -> Option<Cow<'_, str>> {
+        self.region.map(Cow::Borrowed)
+    }
 
-    client.request(
-        "cvm",
-        "cvm.tencentcloudapi.com",
-        Some(region),
-        "2017-03-12",
-        "DescribeInstanceVncUrl",
-        &payload,
-    ).await
-}
-
-/// 启动实例 - StartInstances
-///
-/// **接口描述**：
-/// - 接口请求域名：cvm.tencentcloudapi.com
-/// - 默认接口请求频率限制：10次/秒
-///
-/// **入参说明**：
-///
-/// | 参数        | 类型   | 说明                                           |
-/// |-------------|--------|------------------------------------------------|
-/// | Action      | String | 固定为 `"StartInstances"`                       |
-/// | Version     | String | 固定为 `"2017-03-12"`                           |
-/// | Region      | String | 必填，指定区域（例如："ap-shanghai"）            |
-/// | InstanceIds | Array  | 必填，实例ID数组（最多支持100个实例ID）          |
-/// | Body        | JSON   | 由上述参数构成的 JSON 字符串                     |
-///
-/// **出参说明**：
-///
-/// | 字段     | 类型   | 说明           |
-/// |----------|--------|----------------|
-/// | RequestId| String | 唯一请求ID     |
-pub async fn start_instances(
-    client: &TencentCloudClient,
-    region: &str,
-    instance_ids: Vec<&str>,
-) -> Result<serde_json::Value, Box<dyn Error>> {
-    let payload = json!({ "InstanceIds": instance_ids }).to_string();
-
-    client.request(
-        "cvm",
-        "cvm.tencentcloudapi.com",
-        Some(region),
-        "2017-03-12",
-        "StartInstances",
-        &payload,
-    ).await
-}
-
-/// 重启实例 - RebootInstances
-///
-/// **接口描述**：
-/// - 接口请求域名：cvm.tencentcloudapi.com
-/// - 默认接口请求频率限制：10次/秒
-///
-/// **入参说明**：
-///
-/// | 参数        | 类型   | 说明                                               |
-/// |-------------|--------|----------------------------------------------------|
-/// | Action      | String | 固定为 `"RebootInstances"`                         |
-/// | Version     | String | 固定为 `"2017-03-12"`                              |
-/// | Region      | String | 必填，指定区域（例如："ap-shanghai"）               |
-/// | InstanceIds | Array  | 必填，实例ID数组（最多支持100个实例ID）             |
-/// | StopType    | String | 可选，实例关机类型，默认 `"SOFT"`                  |
-/// | Body        | JSON   | 由上述参数构成的 JSON 字符串                       |
-///
-/// **出参说明**：
-///
-/// | 字段     | 类型   | 说明           |
-/// |----------|--------|----------------|
-/// | RequestId| String | 唯一请求ID     |
-pub async fn reboot_instances(
-    client: &TencentCloudClient,
-    region: &str,
-    instance_ids: Vec<&str>,
-    stop_type: Option<&str>,
-) -> Result<serde_json::Value, Box<dyn Error>> {
-    let payload = {
+    fn payload(&self) -> Value {
         let mut map = Map::new();
-        map.insert("InstanceIds".to_string(), json!(instance_ids));
-        map.insert("StopType".to_string(), json!(stop_type.unwrap_or("SOFT")));
-        Value::Object(map).to_string()
-    };
-
-    client.request(
-        "cvm",
-        "cvm.tencentcloudapi.com",
-        Some(region),
-        "2017-03-12",
-        "RebootInstances",
-        &payload,
-    ).await
+        if let Some(filters) = &self.filters {
+            map.insert("Filters".to_string(), filters.clone());
+        }
+        if let Some(limit) = self.limit {
+            map.insert("Limit".to_string(), json!(limit));
+        }
+        if let Some(offset) = self.offset {
+            map.insert("Offset".to_string(), json!(offset));
+        }
+        Value::Object(map)
+    }
 }
 
-/// 关闭实例 - StopInstances
+#[derive(Debug, Deserialize)]
+/// Generic response envelope returned by CVM mutation APIs.
 ///
-/// **接口描述**：
-/// - 接口请求域名：cvm.tencentcloudapi.com
-/// - 默认接口请求频率限制：10次/秒
-///
-/// **入参说明**：
-///
-/// | 参数         | 类型   | 说明                                                         |
-/// |--------------|--------|--------------------------------------------------------------|
-/// | Action       | String | 固定为 `"StopInstances"`                                     |
-/// | Version      | String | 固定为 `"2017-03-12"`                                        |
-/// | Region       | String | 必填，指定区域（例如："ap-shanghai"）                         |
-/// | InstanceIds  | Array  | 必填，实例ID数组（最多支持100个实例ID）                       |
-/// | StopType     | String | 可选，实例关闭模式，默认 `"SOFT"`                           |
-/// | StoppedMode  | String | 可选，按量计费实例关机收费模式，默认 `"KEEP_CHARGING"`        |
-/// | Body         | JSON   | 由上述参数构成的 JSON 字符串                                  |
-///
-/// **出参说明**：
-///
-/// | 字段     | 类型   | 说明           |
-/// |----------|--------|----------------|
-/// | RequestId| String | 唯一请求ID     |
-pub async fn stop_instances(
-    client: &TencentCloudClient,
-    region: &str,
-    instance_ids: Vec<&str>,
-    stop_type: Option<&str>,
-    stopped_mode: Option<&str>,
-) -> Result<serde_json::Value, Box<dyn Error>> {
-    let payload = {
-        let mut map = Map::new();
-        map.insert("InstanceIds".to_string(), json!(instance_ids));
-        map.insert("StopType".to_string(), json!(stop_type.unwrap_or("SOFT")));
-        map.insert("StoppedMode".to_string(), json!(stopped_mode.unwrap_or("KEEP_CHARGING")));
-        Value::Object(map).to_string()
-    };
-
-    client.request(
-        "cvm",
-        "cvm.tencentcloudapi.com",
-        Some(region),
-        "2017-03-12",
-        "StopInstances",
-        &payload,
-    ).await
+/// | Field | Type | Description |
+/// |-------|------|-------------|
+/// | `response` | [`GenericActionResult`] | Minimal result set from the platform. |
+pub struct GenericActionResponse {
+    #[serde(rename = "Response")]
+    pub response: GenericActionResult,
 }
 
-/// 修改实例所属项目 - ModifyInstancesProject
+#[derive(Debug, Deserialize)]
+/// Minimal response fields extracted from generic CVM actions.
 ///
-/// **接口描述**：
-/// - 接口请求域名：cvm.tencentcloudapi.com
-/// - 默认接口请求频率限制：10次/秒
-///
-/// **入参说明**：
-///
-/// | 参数        | 类型    | 说明                                                         |
-/// |-------------|---------|--------------------------------------------------------------|
-/// | Action      | String  | 固定为 `"ModifyInstancesProject"`                            |
-/// | Version     | String  | 固定为 `"2017-03-12"`                                         |
-/// | Region      | String  | 必填，指定区域（例如："ap-shanghai"）                          |
-/// | InstanceIds | Array   | 必填，实例ID数组（最多支持100个实例ID）                         |
-/// | ProjectId   | Integer | 必填，目标项目ID                                             |
-/// | Body        | JSON    | 由上述参数构成的 JSON 字符串                                  |
-///
-/// **出参说明**：
-///
-/// | 字段     | 类型   | 说明           |
-/// |----------|--------|----------------|
-/// | RequestId| String | 唯一请求ID     |
-pub async fn modify_instances_project(
-    client: &TencentCloudClient,
-    region: &str,
-    instance_ids: Vec<&str>,
-    project_id: i32,
-) -> Result<serde_json::Value, Box<dyn Error>> {
-    let payload = {
-        let mut map = Map::new();
-        map.insert("InstanceIds".to_string(), json!(instance_ids));
-        map.insert("ProjectId".to_string(), json!(project_id));
-        Value::Object(map).to_string()
-    };
+/// | Field | Type | Description |
+/// |-------|------|-------------|
+/// | `request_id` | `String` | Unique request identifier. |
+pub struct GenericActionResult {
+    #[serde(rename = "RequestId")]
+    pub request_id: String,
+}
 
-    client.request(
-        "cvm",
-        "cvm.tencentcloudapi.com",
-        Some(region),
-        "2017-03-12",
-        "ModifyInstancesProject",
-        &payload,
-    ).await
+/// Request payload for `ResetInstancesPassword`.
+///
+/// | Field | Type | Required | Description |
+/// |-------|------|----------|-------------|
+/// | `region` | `&str` | Yes | Target region. |
+/// | `instance_ids` | `&[&str]` | Yes | Instance ID list (<= 100 IDs). |
+/// | `password` | `&str` | Yes | New login password respecting password policy. |
+/// | `username` | `Option<&str>` | No | Custom user account to reset. |
+/// | `force_stop` | `Option<bool>` | No | Whether to force shutdown before resetting. |
+pub struct ResetInstancesPassword<'a> {
+    pub region: &'a str,
+    pub instance_ids: &'a [&'a str],
+    pub password: &'a str,
+    pub username: Option<&'a str>,
+    pub force_stop: Option<bool>,
+}
+
+impl<'a> Endpoint for ResetInstancesPassword<'a> {
+    type Output = GenericActionResponse;
+
+    fn service(&self) -> Cow<'static, str> {
+        Cow::Borrowed("cvm")
+    }
+
+    fn action(&self) -> Cow<'static, str> {
+        Cow::Borrowed("ResetInstancesPassword")
+    }
+
+    fn version(&self) -> Cow<'static, str> {
+        Cow::Borrowed("2017-03-12")
+    }
+
+    fn region(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed(self.region))
+    }
+
+    fn payload(&self) -> Value {
+        let mut map = Map::new();
+        map.insert("InstanceIds".to_string(), json!(self.instance_ids));
+        map.insert("Password".to_string(), json!(self.password));
+        if let Some(username) = self.username {
+            map.insert("UserName".to_string(), json!(username));
+        }
+        if let Some(force_stop) = self.force_stop {
+            map.insert("ForceStop".to_string(), json!(force_stop));
+        }
+        Value::Object(map)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DescribeInstanceVncUrlResponse {
+    #[serde(rename = "Response")]
+    pub response: DescribeInstanceVncUrlResult,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DescribeInstanceVncUrlResult {
+    #[serde(rename = "InstanceVncUrl")]
+    pub instance_vnc_url: Option<String>,
+    #[serde(rename = "RequestId")]
+    pub request_id: String,
+}
+
+/// Request payload for `DescribeInstanceVncUrl`.
+///
+/// | Field | Type | Required | Description |
+/// |-------|------|----------|-------------|
+/// | `region` | `&str` | Yes | Target region. |
+/// | `instance_id` | `&str` | Yes | Instance ID whose web console URL is requested. |
+pub struct DescribeInstanceVncUrl<'a> {
+    pub region: &'a str,
+    pub instance_id: &'a str,
+}
+
+impl<'a> Endpoint for DescribeInstanceVncUrl<'a> {
+    type Output = DescribeInstanceVncUrlResponse;
+
+    fn service(&self) -> Cow<'static, str> {
+        Cow::Borrowed("cvm")
+    }
+
+    fn action(&self) -> Cow<'static, str> {
+        Cow::Borrowed("DescribeInstanceVncUrl")
+    }
+
+    fn version(&self) -> Cow<'static, str> {
+        Cow::Borrowed("2017-03-12")
+    }
+
+    fn region(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed(self.region))
+    }
+
+    fn payload(&self) -> Value {
+        json!({ "InstanceId": self.instance_id })
+    }
+}
+
+/// Request payload for `StartInstances`.
+///
+/// | Field | Type | Required | Description |
+/// |-------|------|----------|-------------|
+/// | `region` | `&str` | Yes | Target region. |
+/// | `instance_ids` | `&[&str]` | Yes | Instance ID list to start. |
+pub struct StartInstances<'a> {
+    pub region: &'a str,
+    pub instance_ids: &'a [&'a str],
+}
+
+impl<'a> Endpoint for StartInstances<'a> {
+    type Output = GenericActionResponse;
+
+    fn service(&self) -> Cow<'static, str> {
+        Cow::Borrowed("cvm")
+    }
+
+    fn action(&self) -> Cow<'static, str> {
+        Cow::Borrowed("StartInstances")
+    }
+
+    fn version(&self) -> Cow<'static, str> {
+        Cow::Borrowed("2017-03-12")
+    }
+
+    fn region(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed(self.region))
+    }
+
+    fn payload(&self) -> Value {
+        json!({ "InstanceIds": self.instance_ids })
+    }
+}
+
+/// Request payload for `RebootInstances`.
+///
+/// | Field | Type | Required | Description |
+/// |-------|------|----------|-------------|
+/// | `region` | `&str` | Yes | Target region. |
+/// | `instance_ids` | `&[&str]` | Yes | Instance ID list to reboot. |
+/// | `reboot_type` | `Option<&str>` | No | Reboot strategy (`SOFT` or `HARD`). |
+pub struct RebootInstances<'a> {
+    pub region: &'a str,
+    pub instance_ids: &'a [&'a str],
+    pub reboot_type: Option<&'a str>,
+}
+
+impl<'a> Endpoint for RebootInstances<'a> {
+    type Output = GenericActionResponse;
+
+    fn service(&self) -> Cow<'static, str> {
+        Cow::Borrowed("cvm")
+    }
+
+    fn action(&self) -> Cow<'static, str> {
+        Cow::Borrowed("RebootInstances")
+    }
+
+    fn version(&self) -> Cow<'static, str> {
+        Cow::Borrowed("2017-03-12")
+    }
+
+    fn region(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed(self.region))
+    }
+
+    fn payload(&self) -> Value {
+        let mut map = Map::new();
+        map.insert("InstanceIds".to_string(), json!(self.instance_ids));
+        if let Some(value) = self.reboot_type {
+            map.insert("RebootType".to_string(), json!(value));
+        }
+        Value::Object(map)
+    }
+}
+
+/// Request payload for `StopInstances`.
+///
+/// | Field | Type | Required | Description |
+/// |-------|------|----------|-------------|
+/// | `region` | `&str` | Yes | Target region. |
+/// | `instance_ids` | `&[&str]` | Yes | Instance ID list to stop. |
+/// | `stop_type` | `Option<&str>` | No | Stop strategy (`SOFT` or `HARD`). |
+/// | `stopped_mode` | `Option<&str>` | No | Billing mode after stop (e.g. `KEEP_CHARGING`). |
+pub struct StopInstances<'a> {
+    pub region: &'a str,
+    pub instance_ids: &'a [&'a str],
+    pub stop_type: Option<&'a str>,
+    pub stopped_mode: Option<&'a str>,
+}
+
+impl<'a> Endpoint for StopInstances<'a> {
+    type Output = GenericActionResponse;
+
+    fn service(&self) -> Cow<'static, str> {
+        Cow::Borrowed("cvm")
+    }
+
+    fn action(&self) -> Cow<'static, str> {
+        Cow::Borrowed("StopInstances")
+    }
+
+    fn version(&self) -> Cow<'static, str> {
+        Cow::Borrowed("2017-03-12")
+    }
+
+    fn region(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed(self.region))
+    }
+
+    fn payload(&self) -> Value {
+        let mut map = Map::new();
+        map.insert("InstanceIds".to_string(), json!(self.instance_ids));
+        if let Some(value) = self.stop_type {
+            map.insert("StopType".to_string(), json!(value));
+        }
+        if let Some(value) = self.stopped_mode {
+            map.insert("StoppedMode".to_string(), json!(value));
+        }
+        Value::Object(map)
+    }
+}
+
+/// Request payload for `ModifyInstancesProject`.
+///
+/// | Field | Type | Required | Description |
+/// |-------|------|----------|-------------|
+/// | `region` | `&str` | Yes | Target region. |
+/// | `instance_ids` | `&[&str]` | Yes | Instance ID list to reassign. |
+/// | `project_id` | `i32` | Yes | Target project ID. |
+pub struct ModifyInstancesProject<'a> {
+    pub region: &'a str,
+    pub instance_ids: &'a [&'a str],
+    pub project_id: i32,
+}
+
+impl<'a> Endpoint for ModifyInstancesProject<'a> {
+    type Output = GenericActionResponse;
+
+    fn service(&self) -> Cow<'static, str> {
+        Cow::Borrowed("cvm")
+    }
+
+    fn action(&self) -> Cow<'static, str> {
+        Cow::Borrowed("ModifyInstancesProject")
+    }
+
+    fn version(&self) -> Cow<'static, str> {
+        Cow::Borrowed("2017-03-12")
+    }
+
+    fn region(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed(self.region))
+    }
+
+    fn payload(&self) -> Value {
+        json!({
+            "InstanceIds": self.instance_ids,
+            "ProjectId": self.project_id,
+        })
+    }
+}
+
+/// Execute CVM `DescribeInstances` asynchronously.
+///
+/// # Tencent Cloud Reference
+/// | Item | Value |
+/// |------|-------|
+/// | Service | `cvm` |
+/// | Action | `DescribeInstances` |
+/// | Version | `2017-03-12` |
+/// | Rate Limit | 40 req/s |
+///
+/// # Request Parameters
+/// Mirrors [`DescribeInstances`] fields.
+///
+/// Returns [`DescribeInstancesResponse`].
+pub async fn describe_instances_async(
+    client: &TencentCloudAsync,
+    request: &DescribeInstances<'_>,
+) -> TencentCloudResult<DescribeInstancesResponse> {
+    client.request(request).await
+}
+
+/// Execute CVM `DescribeInstances` with the blocking client.
+///
+/// Behaviour and parameters match [`describe_instances_async`].
+pub fn describe_instances_blocking(
+    client: &TencentCloudBlocking,
+    request: &DescribeInstances<'_>,
+) -> TencentCloudResult<DescribeInstancesResponse> {
+    client.request(request)
+}
+
+/// Reset CVM instance passwords asynchronously.
+///
+/// # Tencent Cloud Reference
+/// | Item | Value |
+/// |------|-------|
+/// | Service | `cvm` |
+/// | Action | `ResetInstancesPassword` |
+/// | Version | `2017-03-12` |
+/// | Rate Limit | 10 req/s |
+///
+/// # Request Parameters
+/// Mirrors [`ResetInstancesPassword`] fields.
+///
+/// Returns [`GenericActionResponse`].
+pub async fn reset_instances_password_async(
+    client: &TencentCloudAsync,
+    request: &ResetInstancesPassword<'_>,
+) -> TencentCloudResult<GenericActionResponse> {
+    client.request(request).await
+}
+
+/// Reset CVM instance passwords with the blocking client.
+///
+/// Behaviour and parameters match [`reset_instances_password_async`].
+pub fn reset_instances_password_blocking(
+    client: &TencentCloudBlocking,
+    request: &ResetInstancesPassword<'_>,
+) -> TencentCloudResult<GenericActionResponse> {
+    client.request(request)
+}
+
+/// Query VNC URLs for CVM instances asynchronously.
+///
+/// # Tencent Cloud Reference
+/// | Item | Value |
+/// |------|-------|
+/// | Service | `cvm` |
+/// | Action | `DescribeInstanceVncUrl` |
+/// | Version | `2017-03-12` |
+/// | Rate Limit | 10 req/s |
+///
+/// Returns [`DescribeInstanceVncUrlResponse`].
+pub async fn describe_instance_vnc_url_async(
+    client: &TencentCloudAsync,
+    request: &DescribeInstanceVncUrl<'_>,
+) -> TencentCloudResult<DescribeInstanceVncUrlResponse> {
+    client.request(request).await
+}
+
+/// Query VNC URLs for CVM instances with the blocking client.
+///
+/// Behaviour and parameters match [`describe_instance_vnc_url_async`].
+pub fn describe_instance_vnc_url_blocking(
+    client: &TencentCloudBlocking,
+    request: &DescribeInstanceVncUrl<'_>,
+) -> TencentCloudResult<DescribeInstanceVncUrlResponse> {
+    client.request(request)
+}
+
+/// Start CVM instances asynchronously.
+///
+/// # Tencent Cloud Reference
+/// | Item | Value |
+/// |------|-------|
+/// | Service | `cvm` |
+/// | Action | `StartInstances` |
+/// | Version | `2017-03-12` |
+///
+/// Returns [`GenericActionResponse`].
+pub async fn start_instances_async(
+    client: &TencentCloudAsync,
+    request: &StartInstances<'_>,
+) -> TencentCloudResult<GenericActionResponse> {
+    client.request(request).await
+}
+
+/// Start CVM instances with the blocking client.
+///
+/// Behaviour and parameters match [`start_instances_async`].
+pub fn start_instances_blocking(
+    client: &TencentCloudBlocking,
+    request: &StartInstances<'_>,
+) -> TencentCloudResult<GenericActionResponse> {
+    client.request(request)
+}
+
+/// Reboot CVM instances asynchronously.
+///
+/// # Tencent Cloud Reference
+/// | Item | Value |
+/// |------|-------|
+/// | Service | `cvm` |
+/// | Action | `RebootInstances` |
+/// | Version | `2017-03-12` |
+///
+/// Returns [`GenericActionResponse`].
+pub async fn reboot_instances_async(
+    client: &TencentCloudAsync,
+    request: &RebootInstances<'_>,
+) -> TencentCloudResult<GenericActionResponse> {
+    client.request(request).await
+}
+
+/// Reboot CVM instances with the blocking client.
+///
+/// Behaviour and parameters match [`reboot_instances_async`].
+pub fn reboot_instances_blocking(
+    client: &TencentCloudBlocking,
+    request: &RebootInstances<'_>,
+) -> TencentCloudResult<GenericActionResponse> {
+    client.request(request)
+}
+
+/// Stop CVM instances asynchronously.
+///
+/// # Tencent Cloud Reference
+/// | Item | Value |
+/// |------|-------|
+/// | Service | `cvm` |
+/// | Action | `StopInstances` |
+/// | Version | `2017-03-12` |
+///
+/// Returns [`GenericActionResponse`].
+pub async fn stop_instances_async(
+    client: &TencentCloudAsync,
+    request: &StopInstances<'_>,
+) -> TencentCloudResult<GenericActionResponse> {
+    client.request(request).await
+}
+
+/// Stop CVM instances with the blocking client.
+///
+/// Behaviour and parameters match [`stop_instances_async`].
+pub fn stop_instances_blocking(
+    client: &TencentCloudBlocking,
+    request: &StopInstances<'_>,
+) -> TencentCloudResult<GenericActionResponse> {
+    client.request(request)
+}
+
+/// Change the project of CVM instances asynchronously.
+///
+/// # Tencent Cloud Reference
+/// | Item | Value |
+/// |------|-------|
+/// | Service | `cvm` |
+/// | Action | `ModifyInstancesProject` |
+/// | Version | `2017-03-12` |
+///
+/// Returns [`GenericActionResponse`].
+pub async fn modify_instances_project_async(
+    client: &TencentCloudAsync,
+    request: &ModifyInstancesProject<'_>,
+) -> TencentCloudResult<GenericActionResponse> {
+    client.request(request).await
+}
+
+/// Change the project of CVM instances with the blocking client.
+///
+/// Behaviour and parameters match [`modify_instances_project_async`].
+pub fn modify_instances_project_blocking(
+    client: &TencentCloudBlocking,
+    request: &ModifyInstancesProject<'_>,
+) -> TencentCloudResult<GenericActionResponse> {
+    client.request(request)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio;
 
-    const TEST_SECRET_ID: &str = "YourSecretId";
-    const TEST_SECRET_KEY: &str = "YourSecretKey";
-    const TEST_REGION: &str = "ap-shanghai";
-    // 示例实例ID、项目ID等，请根据实际情况修改
-    const TEST_INSTANCE_ID: &str = "ins-r9hr2upy";
-    const TEST_INSTANCE_IDS: &[&str] = &["ins-r8hr2upy", "ins-5d8a23rs"];
-    const TEST_PROJECT_ID: i32 = 1045;
+    #[test]
+    fn describe_instances_payload_supports_filters() {
+        let filters = json!([
+            { "Name": "instance-id", "Values": ["ins-123"] },
+            { "Name": "zone", "Values": ["ap-shanghai-1"] }
+        ]);
+        let request = DescribeInstances {
+            region: Some("ap-shanghai"),
+            filters: Some(filters.clone()),
+            limit: Some(20),
+            offset: Some(0),
+        };
 
-    #[tokio::test]
-    async fn test_describe_instances() {
-        let client = TencentCloudClient::new(TEST_SECRET_ID, TEST_SECRET_KEY, None);
-        match describe_instances(&client).await {
-            Ok(resp) => {
-                println!("DescribeInstances 响应:\n{}", resp);
-                assert!(!resp.is_null());
-            }
-            Err(e) => eprintln!("调用 DescribeInstances 时出错: {}", e),
-        }
+        let payload = request.payload();
+        assert_eq!(payload["Filters"], filters);
+        assert_eq!(payload["Limit"], json!(20));
+        assert_eq!(payload["Offset"], json!(0));
     }
 
-    #[tokio::test]
-    async fn test_reset_instances_password() {
-        let client = TencentCloudClient::new(TEST_SECRET_ID, TEST_SECRET_KEY, None);
-        let password = "abc123ABC!@#";
-        let username = Some("root"); // 根据实际系统调整
-        let force_stop = Some(true);
-        match reset_instances_password(
-            &client,
-            TEST_REGION,
-            TEST_INSTANCE_IDS.to_vec(),
-            password,
-            username,
-            force_stop,
-        ).await {
-            Ok(resp) => {
-                println!("ResetInstancesPassword 响应:\n{}", resp);
-                assert!(!resp.is_null());
+    #[test]
+    fn deserialize_generic_action_response() {
+        let payload = r#"{
+            "Response": {
+                "RequestId": "req-abc"
             }
-            Err(e) => eprintln!("调用 ResetInstancesPassword 时出错: {}", e),
-        }
+        }"#;
+        let parsed: GenericActionResponse = serde_json::from_str(payload).unwrap();
+        assert_eq!(parsed.response.request_id, "req-abc");
     }
 
-    #[tokio::test]
-    async fn test_describe_instance_vnc_url() {
-        let client = TencentCloudClient::new(TEST_SECRET_ID, TEST_SECRET_KEY, None);
-        match describe_instance_vnc_url(&client, TEST_REGION, TEST_INSTANCE_ID).await {
-            Ok(resp) => {
-                println!("DescribeInstanceVncUrl 响应:\n{}", resp);
-                assert!(!resp.is_null());
+    #[test]
+    fn deserialize_vnc_url_response() {
+        let payload = r#"{
+            "Response": {
+                "InstanceVncUrl": "https://example.com",
+                "RequestId": "req-xyz"
             }
-            Err(e) => eprintln!("调用 DescribeInstanceVncUrl 时出错: {}", e),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_start_instances() {
-        let client = TencentCloudClient::new(TEST_SECRET_ID, TEST_SECRET_KEY, None);
-        match start_instances(&client, TEST_REGION, TEST_INSTANCE_IDS.to_vec()).await {
-            Ok(resp) => {
-                println!("StartInstances 响应:\n{}", resp);
-                assert!(!resp.is_null());
-            }
-            Err(e) => eprintln!("调用 StartInstances 时出错: {}", e),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_reboot_instances() {
-        let client = TencentCloudClient::new(TEST_SECRET_ID, TEST_SECRET_KEY, None);
-        match reboot_instances(&client, TEST_REGION, TEST_INSTANCE_IDS.to_vec(), Some("SOFT")).await {
-            Ok(resp) => {
-                println!("RebootInstances 响应:\n{}", resp);
-                assert!(!resp.is_null());
-            }
-            Err(e) => eprintln!("调用 RebootInstances 时出错: {}", e),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_stop_instances() {
-        let client = TencentCloudClient::new(TEST_SECRET_ID, TEST_SECRET_KEY, None);
-        match stop_instances(&client, TEST_REGION, TEST_INSTANCE_IDS.to_vec(), Some("SOFT"), Some("KEEP_CHARGING")).await {
-            Ok(resp) => {
-                println!("StopInstances 响应:\n{}", resp);
-                assert!(!resp.is_null());
-            }
-            Err(e) => eprintln!("调用 StopInstances 时出错: {}", e),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_modify_instances_project() {
-        let client = TencentCloudClient::new(TEST_SECRET_ID, TEST_SECRET_KEY, None);
-        match modify_instances_project(&client, TEST_REGION, TEST_INSTANCE_IDS.to_vec(), TEST_PROJECT_ID).await {
-            Ok(resp) => {
-                println!("ModifyInstancesProject 响应:\n{}", resp);
-                assert!(!resp.is_null());
-            }
-            Err(e) => eprintln!("调用 ModifyInstancesProject 时出错: {}", e),
-        }
+        }"#;
+        let parsed: DescribeInstanceVncUrlResponse = serde_json::from_str(payload).unwrap();
+        assert_eq!(
+            parsed.response.instance_vnc_url.as_deref(),
+            Some("https://example.com")
+        );
     }
 }

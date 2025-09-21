@@ -3,3 +3,6 @@
 .idea/
 .cargo/
 target/
+AGENTS.md
+CONTEXT.md
+Cargo.lock
