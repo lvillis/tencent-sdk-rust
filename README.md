@@ -29,6 +29,73 @@ This project is a Tencent Cloud API SDK written in Rust, designed to help develo
 easily. The SDK uses asynchronous programming (via Tokio) and encapsulates functionalities such as request signing (
 TC3-HMAC-SHA256), unified request handling, and modular service interfaces (e.g., CVM, Billing, Tag, etc.).
 
+## Usage
+
+### Add the crate
+
+```toml
+[dependencies]
+tencent-sdk = "0.1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```
+
+### Configure credentials and create clients
+
+```rust
+use tencent_sdk::{
+    client::TencentCloudAsync,
+    core::{TencentCloudError, TencentCloudResult},
+    services::cvm::{DescribeInstances, DescribeInstancesResponse},
+};
+
+async fn describe_instances() -> TencentCloudResult<DescribeInstancesResponse> {
+    let secret_id = std::env::var("TENCENT_SECRET_ID").expect("missing TENCENT_SECRET_ID");
+    let secret_key = std::env::var("TENCENT_SECRET_KEY").expect("missing TENCENT_SECRET_KEY");
+
+    let client = TencentCloudAsync::builder(secret_id, secret_key)?
+        .no_system_proxy() // optional convenience helper
+        .with_default_region("ap-guangzhou")
+        .with_retry(3, std::time::Duration::from_millis(200))
+        .build()?;
+
+    client
+        .request(&DescribeInstances {
+            region: None,
+            filters: None,
+            limit: Some(20),
+            offset: None,
+        })
+        .await
+}
+
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<(), TencentCloudError> {
+    let response = describe_instances().await?;
+    println!("instances: {:?}", response.response.total_count);
+    Ok(())
+}
+```
+
+The blocking client mirrors the async API:
+
+```rust
+use tencent_sdk::{
+    client::TencentCloudBlocking,
+    services::billing::describe_account_balance_blocking,
+};
+
+fn fetch_balance() -> tencent_sdk::core::TencentCloudResult<()> {
+    let client = TencentCloudBlocking::builder("secret", "key")?
+        .no_system_proxy()
+        .with_default_region("ap-guangzhou")
+        .build()?;
+
+    let result = describe_account_balance_blocking(&client)?;
+    println!("balance: {:?}", result.response.real_balance);
+    Ok(())
+}
+```
+
 ## Features
 
 - **Asynchronous Support**: Built on Tokio for high concurrency.
