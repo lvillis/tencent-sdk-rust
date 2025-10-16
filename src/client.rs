@@ -27,54 +27,75 @@ pub struct TencentCloudAsyncBuilder<T = DefaultAsyncTransport> {
 }
 
 impl TencentCloudAsyncBuilder<DefaultAsyncTransport> {
-    fn default_builder(credentials: Credentials) -> Self {
-        Self {
+    fn default_builder(credentials: Credentials) -> TencentCloudResult<Self> {
+        let transport =
+            DefaultAsyncTransport::new(false, DEFAULT_USER_AGENT, DEFAULT_TIMEOUT, false)
+                .map_err(TencentCloudError::transport_build)?;
+
+        Ok(Self {
             credentials,
             default_region: None,
             user_agent: DEFAULT_USER_AGENT.to_string(),
             insecure: false,
             timeout: DEFAULT_TIMEOUT,
             no_proxy: false,
-            transport: DefaultAsyncTransport::new(
-                false,
-                DEFAULT_USER_AGENT,
-                DEFAULT_TIMEOUT,
-                false,
-            ),
-        }
+            transport,
+        })
     }
 
-    fn refresh_transport(&mut self) {
+    fn refresh_transport(&mut self) -> TencentCloudResult<()> {
         self.transport = DefaultAsyncTransport::new(
             self.insecure,
             &self.user_agent,
             self.timeout,
             self.no_proxy,
-        );
+        )
+        .map_err(TencentCloudError::transport_build)?;
+        Ok(())
     }
 
-    pub fn timeout(mut self, value: Duration) -> Self {
+    pub fn try_timeout(mut self, value: Duration) -> TencentCloudResult<Self> {
         self.timeout = value;
-        self.refresh_transport();
-        self
+        self.refresh_transport()?;
+        Ok(self)
     }
 
-    pub fn user_agent(mut self, value: impl Into<String>) -> Self {
+    pub fn timeout(self, value: Duration) -> Self {
+        self.try_timeout(value)
+            .expect("failed to apply timeout to TencentCloudAsyncBuilder")
+    }
+
+    pub fn try_user_agent(mut self, value: impl Into<String>) -> TencentCloudResult<Self> {
         self.user_agent = value.into();
-        self.refresh_transport();
-        self
+        self.refresh_transport()?;
+        Ok(self)
     }
 
-    pub fn danger_accept_invalid_certs(mut self, yes: bool) -> Self {
+    pub fn user_agent(self, value: impl Into<String>) -> Self {
+        self.try_user_agent(value)
+            .expect("failed to apply user agent to TencentCloudAsyncBuilder")
+    }
+
+    pub fn try_danger_accept_invalid_certs(mut self, yes: bool) -> TencentCloudResult<Self> {
         self.insecure = yes;
-        self.refresh_transport();
-        self
+        self.refresh_transport()?;
+        Ok(self)
     }
 
-    pub fn no_system_proxy(mut self) -> Self {
+    pub fn danger_accept_invalid_certs(self, yes: bool) -> Self {
+        self.try_danger_accept_invalid_certs(yes)
+            .expect("failed to update TLS settings for TencentCloudAsyncBuilder")
+    }
+
+    pub fn try_no_system_proxy(mut self) -> TencentCloudResult<Self> {
         self.no_proxy = true;
-        self.refresh_transport();
-        self
+        self.refresh_transport()?;
+        Ok(self)
+    }
+
+    pub fn no_system_proxy(self) -> Self {
+        self.try_no_system_proxy()
+            .expect("failed to disable system proxy for TencentCloudAsyncBuilder")
     }
 }
 
@@ -90,7 +111,7 @@ impl<T> TencentCloudAsyncBuilder<T> {
     }
 
     pub fn with_token(mut self, token: impl Into<String>) -> Self {
-        self.credentials.token = Some(token.into());
+        self.credentials.set_token(token);
         self
     }
 }
@@ -155,7 +176,7 @@ impl TencentCloudAsync<DefaultAsyncTransport> {
     pub fn builder(
         secret_id: impl Into<String>,
         secret_key: impl Into<String>,
-    ) -> TencentCloudAsyncBuilder<DefaultAsyncTransport> {
+    ) -> TencentCloudResult<TencentCloudAsyncBuilder<DefaultAsyncTransport>> {
         let credentials = Credentials::new(secret_id, secret_key);
         TencentCloudAsyncBuilder::default_builder(credentials)
     }
@@ -164,7 +185,7 @@ impl TencentCloudAsync<DefaultAsyncTransport> {
         secret_id: impl Into<String>,
         secret_key: impl Into<String>,
     ) -> TencentCloudResult<Self> {
-        Self::builder(secret_id, secret_key).build()
+        Self::builder(secret_id, secret_key)?.build()
     }
 }
 
@@ -239,54 +260,75 @@ pub struct TencentCloudBlockingBuilder<T = DefaultBlockingTransport> {
 }
 
 impl TencentCloudBlockingBuilder<DefaultBlockingTransport> {
-    fn default_builder(credentials: Credentials) -> Self {
-        Self {
+    fn default_builder(credentials: Credentials) -> TencentCloudResult<Self> {
+        let transport =
+            DefaultBlockingTransport::new(false, DEFAULT_USER_AGENT, DEFAULT_TIMEOUT, false)
+                .map_err(TencentCloudError::transport_build)?;
+
+        Ok(Self {
             credentials,
             default_region: None,
             user_agent: DEFAULT_USER_AGENT.to_string(),
             insecure: false,
             timeout: DEFAULT_TIMEOUT,
             no_proxy: false,
-            transport: DefaultBlockingTransport::new(
-                false,
-                DEFAULT_USER_AGENT,
-                DEFAULT_TIMEOUT,
-                false,
-            ),
-        }
+            transport,
+        })
     }
 
-    fn refresh_transport(&mut self) {
+    fn refresh_transport(&mut self) -> TencentCloudResult<()> {
         self.transport = DefaultBlockingTransport::new(
             self.insecure,
             &self.user_agent,
             self.timeout,
             self.no_proxy,
-        );
+        )
+        .map_err(TencentCloudError::transport_build)?;
+        Ok(())
     }
 
-    pub fn timeout(mut self, value: Duration) -> Self {
+    pub fn try_timeout(mut self, value: Duration) -> TencentCloudResult<Self> {
         self.timeout = value;
-        self.refresh_transport();
-        self
+        self.refresh_transport()?;
+        Ok(self)
     }
 
-    pub fn user_agent(mut self, value: impl Into<String>) -> Self {
+    pub fn timeout(self, value: Duration) -> Self {
+        self.try_timeout(value)
+            .expect("failed to apply timeout to TencentCloudBlockingBuilder")
+    }
+
+    pub fn try_user_agent(mut self, value: impl Into<String>) -> TencentCloudResult<Self> {
         self.user_agent = value.into();
-        self.refresh_transport();
-        self
+        self.refresh_transport()?;
+        Ok(self)
     }
 
-    pub fn danger_accept_invalid_certs(mut self, yes: bool) -> Self {
+    pub fn user_agent(self, value: impl Into<String>) -> Self {
+        self.try_user_agent(value)
+            .expect("failed to apply user agent to TencentCloudBlockingBuilder")
+    }
+
+    pub fn try_danger_accept_invalid_certs(mut self, yes: bool) -> TencentCloudResult<Self> {
         self.insecure = yes;
-        self.refresh_transport();
-        self
+        self.refresh_transport()?;
+        Ok(self)
     }
 
-    pub fn no_system_proxy(mut self) -> Self {
+    pub fn danger_accept_invalid_certs(self, yes: bool) -> Self {
+        self.try_danger_accept_invalid_certs(yes)
+            .expect("failed to update TLS settings for TencentCloudBlockingBuilder")
+    }
+
+    pub fn try_no_system_proxy(mut self) -> TencentCloudResult<Self> {
         self.no_proxy = true;
-        self.refresh_transport();
-        self
+        self.refresh_transport()?;
+        Ok(self)
+    }
+
+    pub fn no_system_proxy(self) -> Self {
+        self.try_no_system_proxy()
+            .expect("failed to disable system proxy for TencentCloudBlockingBuilder")
     }
 }
 
@@ -302,7 +344,7 @@ impl<T> TencentCloudBlockingBuilder<T> {
     }
 
     pub fn with_token(mut self, token: impl Into<String>) -> Self {
-        self.credentials.token = Some(token.into());
+        self.credentials.set_token(token);
         self
     }
 }
@@ -370,7 +412,7 @@ impl TencentCloudBlocking<DefaultBlockingTransport> {
     pub fn builder(
         secret_id: impl Into<String>,
         secret_key: impl Into<String>,
-    ) -> TencentCloudBlockingBuilder<DefaultBlockingTransport> {
+    ) -> TencentCloudResult<TencentCloudBlockingBuilder<DefaultBlockingTransport>> {
         let credentials = Credentials::new(secret_id, secret_key);
         TencentCloudBlockingBuilder::default_builder(credentials)
     }
@@ -379,7 +421,7 @@ impl TencentCloudBlocking<DefaultBlockingTransport> {
         secret_id: impl Into<String>,
         secret_key: impl Into<String>,
     ) -> TencentCloudResult<Self> {
-        Self::builder(secret_id, secret_key).build()
+        Self::builder(secret_id, secret_key)?.build()
     }
 }
 

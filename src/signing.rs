@@ -79,7 +79,7 @@ pub fn build_tc3_headers(
         algorithm, timestamp, credential_scope, hashed_canonical_request
     );
 
-    let secret_date = hmac_sha256(format!("TC3{}", credentials.secret_key).as_bytes(), &date);
+    let secret_date = hmac_sha256(format!("TC3{}", credentials.secret_key()).as_bytes(), &date);
     let secret_service = hmac_sha256(&secret_date, service);
     let secret_signing = hmac_sha256(&secret_service, "tc3_request");
 
@@ -92,7 +92,11 @@ pub fn build_tc3_headers(
 
     let authorization = format!(
         "{} Credential={}/{}, SignedHeaders={}, Signature={}",
-        algorithm, credentials.secret_id, credential_scope, signed_headers, signature
+        algorithm,
+        credentials.secret_id(),
+        credential_scope,
+        signed_headers,
+        signature
     );
 
     let mut headers = HashMap::new();
@@ -105,7 +109,7 @@ pub fn build_tc3_headers(
     if let Some(value) = region {
         headers.insert("X-TC-Region".to_string(), (*value).to_string());
     }
-    if let Some(token) = credentials.token.as_deref() {
+    if let Some(token) = credentials.token() {
         headers.insert("X-TC-Token".to_string(), token.to_string());
     }
 

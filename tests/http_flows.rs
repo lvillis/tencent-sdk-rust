@@ -71,6 +71,7 @@ async fn async_client_handles_success_response() {
         .await;
 
     let client = TencentCloudAsync::builder("secret", "key")
+        .expect("build async client builder")
         .no_system_proxy()
         .build()
         .expect("build async client");
@@ -94,6 +95,7 @@ async fn async_client_surfaces_error_status() {
         .await;
 
     let client = TencentCloudAsync::builder("secret", "key")
+        .expect("build async client builder")
         .no_system_proxy()
         .build()
         .expect("build async client");
@@ -135,6 +137,7 @@ fn blocking_client_handles_success_response() {
             .await;
 
         let client = TencentCloudBlocking::builder("secret", "key")
+            .expect("build blocking client builder")
             .no_system_proxy()
             .build()
             .expect("build blocking client");

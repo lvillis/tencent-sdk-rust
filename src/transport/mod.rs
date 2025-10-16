@@ -26,7 +26,12 @@ pub mod async_impl {
     }
 
     impl ReqwestAsync {
-        pub fn new(insecure: bool, ua: &str, timeout: Duration, no_proxy: bool) -> Self {
+        pub fn new(
+            insecure: bool,
+            ua: &str,
+            timeout: Duration,
+            no_proxy: bool,
+        ) -> Result<Self, reqwest::Error> {
             let mut builder = Client::builder()
                 .danger_accept_invalid_certs(insecure)
                 .user_agent(ua)
@@ -36,8 +41,8 @@ pub mod async_impl {
                 builder = builder.no_proxy();
             }
 
-            let client = builder.build().expect("build async reqwest client");
-            Self { client }
+            let client = builder.build()?;
+            Ok(Self { client })
         }
     }
 
@@ -99,7 +104,12 @@ pub mod blocking_impl {
     }
 
     impl ReqwestBlocking {
-        pub fn new(insecure: bool, ua: &str, timeout: Duration, no_proxy: bool) -> Self {
+        pub fn new(
+            insecure: bool,
+            ua: &str,
+            timeout: Duration,
+            no_proxy: bool,
+        ) -> Result<Self, reqwest::Error> {
             let mut builder = Client::builder()
                 .danger_accept_invalid_certs(insecure)
                 .user_agent(ua)
@@ -109,8 +119,8 @@ pub mod blocking_impl {
                 builder = builder.no_proxy();
             }
 
-            let client = builder.build().expect("build blocking reqwest client");
-            Self { client }
+            let client = builder.build()?;
+            Ok(Self { client })
         }
     }
 

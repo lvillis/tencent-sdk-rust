@@ -30,6 +30,12 @@ pub enum TencentCloudError {
     #[error("Transport error during {method} {url}: {source}", method = context.method, url = context.url, source = context.source)]
     Transport { context: Box<TransportFailure> },
 
+    #[error("Transport build error: {source}")]
+    TransportBuild {
+        #[source]
+        source: reqwest::Error,
+    },
+
     #[error(transparent)]
     Url(#[from] ParseError),
 
@@ -60,5 +66,9 @@ impl TencentCloudError {
                 url,
             }),
         }
+    }
+
+    pub fn transport_build(source: reqwest::Error) -> Self {
+        Self::TransportBuild { source }
     }
 }
