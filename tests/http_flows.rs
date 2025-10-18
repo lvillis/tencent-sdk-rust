@@ -112,6 +112,45 @@ async fn async_client_surfaces_error_status() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn async_client_reports_service_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Response": {
+                "Error": {
+                    "Code": "AuthFailure",
+                    "Message": "signature mismatch"
+                },
+                "RequestId": "req-123"
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let client = TencentCloudAsync::builder("secret", "key")
+        .expect("build async client builder")
+        .no_system_proxy()
+        .build()
+        .expect("build async client");
+
+    let endpoint = MockDescribeEndpoint::new(&server, json!({}));
+    let err = client
+        .request(&endpoint)
+        .await
+        .expect_err("expect service error");
+
+    match err {
+        TencentCloudError::Service { context } => {
+            assert_eq!(context.code, "AuthFailure");
+            assert_eq!(context.message, "signature mismatch");
+            assert_eq!(context.request_id.as_deref(), Some("req-123"));
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn blocking_client_handles_success_response() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
@@ -141,4 +180,44 @@ async fn blocking_client_handles_success_response() {
     .expect("blocking request succeeds");
 
     assert_eq!(response["Response"]["Message"], "blocking");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn blocking_client_reports_service_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Response": {
+                "Error": {
+                    "Code": "OperationDenied",
+                    "Message": "capacity exceeded"
+                },
+                "RequestId": "req-456"
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let endpoint = MockDescribeEndpoint::new(&server, json!({}));
+    let err = tokio::task::spawn_blocking(move || {
+        let client = TencentCloudBlocking::builder("secret", "key")
+            .expect("build blocking client builder")
+            .no_system_proxy()
+            .build()
+            .expect("build blocking client");
+        client.request(&endpoint)
+    })
+    .await
+    .expect("join blocking thread")
+    .expect_err("expect blocking service error");
+
+    match err {
+        TencentCloudError::Service { context } => {
+            assert_eq!(context.code, "OperationDenied");
+            assert_eq!(context.message, "capacity exceeded");
+            assert_eq!(context.request_id.as_deref(), Some("req-456"));
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
 }

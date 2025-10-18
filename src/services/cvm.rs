@@ -1,10 +1,12 @@
 use crate::{
     client::{TencentCloudAsync, TencentCloudBlocking},
     core::{Endpoint, TencentCloudResult},
+    services::Filter,
 };
-use serde::Deserialize;
-use serde_json::{json, Map, Value};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::borrow::Cow;
+use std::collections::HashMap;
 
 #[derive(Debug, Deserialize)]
 pub struct DescribeInstancesResponse {
@@ -17,24 +19,48 @@ pub struct DescribeInstancesResult {
     #[serde(rename = "TotalCount")]
     pub total_count: Option<u64>,
     #[serde(rename = "InstanceSet")]
-    pub instance_set: Option<Vec<Value>>,
+    pub instance_set: Option<Vec<InstanceSummary>>,
     #[serde(rename = "RequestId")]
     pub request_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct InstanceSummary {
+    #[serde(rename = "InstanceId")]
+    pub instance_id: Option<String>,
+    #[serde(rename = "InstanceName")]
+    pub instance_name: Option<String>,
+    #[serde(rename = "InstanceState")]
+    pub instance_state: Option<String>,
+    #[serde(rename = "InstanceType")]
+    pub instance_type: Option<String>,
+    #[serde(rename = "Cpu")]
+    pub cpu: Option<u64>,
+    #[serde(rename = "Memory")]
+    pub memory: Option<u64>,
+    #[serde(rename = "PrivateIpAddresses")]
+    pub private_ip_addresses: Option<Vec<String>>,
+    #[serde(rename = "PublicIpAddresses")]
+    pub public_ip_addresses: Option<Vec<String>>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct DescribeInstancesPayload<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filters: Option<&'a [Filter<'a>]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    offset: Option<u32>,
+}
+
 /// Request wrapper for CVM `DescribeInstances`.
-///
-/// | Field | Type | Required | Description |
-/// |-------|------|----------|-------------|
-/// | `region` | `Option<&str>` | Yes* | Specify an explicit region or rely on the client default. |
-/// | `filters` | `Option<Value>` | No | Tencent Cloud filter objects to scope the query. |
-/// | `limit` | `Option<u32>` | No | Page size, maximum 100. |
-/// | `offset` | `Option<u32>` | No | Pagination offset. |
-///
-/// *Required unless `TencentCloudAsync::with_default_region` (or blocking equivalent) was set.
 pub struct DescribeInstances<'a> {
     pub region: Option<&'a str>,
-    pub filters: Option<Value>,
+    pub filters: Option<Vec<Filter<'a>>>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
 }
@@ -59,51 +85,29 @@ impl<'a> Endpoint for DescribeInstances<'a> {
     }
 
     fn payload(&self) -> Value {
-        let mut map = Map::new();
-        if let Some(filters) = &self.filters {
-            map.insert("Filters".to_string(), filters.clone());
-        }
-        if let Some(limit) = self.limit {
-            map.insert("Limit".to_string(), json!(limit));
-        }
-        if let Some(offset) = self.offset {
-            map.insert("Offset".to_string(), json!(offset));
-        }
-        Value::Object(map)
+        let filters = self.filters.as_deref();
+        serde_json::to_value(DescribeInstancesPayload {
+            filters,
+            limit: self.limit,
+            offset: self.offset,
+        })
+        .expect("serialize DescribeInstances payload")
     }
 }
 
 #[derive(Debug, Deserialize)]
-/// Generic response envelope returned by CVM mutation APIs.
-///
-/// | Field | Type | Description |
-/// |-------|------|-------------|
-/// | `response` | [`GenericActionResult`] | Minimal result set from the platform. |
 pub struct GenericActionResponse {
     #[serde(rename = "Response")]
     pub response: GenericActionResult,
 }
 
 #[derive(Debug, Deserialize)]
-/// Minimal response fields extracted from generic CVM actions.
-///
-/// | Field | Type | Description |
-/// |-------|------|-------------|
-/// | `request_id` | `String` | Unique request identifier. |
 pub struct GenericActionResult {
     #[serde(rename = "RequestId")]
     pub request_id: String,
 }
 
 /// Request payload for `ResetInstancesPassword`.
-///
-/// | Field | Type | Required | Description |
-/// |-------|------|----------|-------------|
-/// | `region` | `&str` | Yes | Target region. |
-/// | `instance_ids` | `&[&str]` | Yes | Instance ID list (<= 100 IDs). |
-/// | `password` | `&str` | Yes | New login password respecting password policy. |
-/// | `username` | `Option<&str>` | No | Custom user account to reset. |
-/// | `force_stop` | `Option<bool>` | No | Whether to force shutdown before resetting. |
 pub struct ResetInstancesPassword<'a> {
     pub region: &'a str,
     pub instance_ids: &'a [&'a str],
@@ -132,16 +136,18 @@ impl<'a> Endpoint for ResetInstancesPassword<'a> {
     }
 
     fn payload(&self) -> Value {
-        let mut map = Map::new();
-        map.insert("InstanceIds".to_string(), json!(self.instance_ids));
-        map.insert("Password".to_string(), json!(self.password));
+        let mut payload = json!({
+            "InstanceIds": self.instance_ids,
+            "Password": self.password
+        });
+
         if let Some(username) = self.username {
-            map.insert("UserName".to_string(), json!(username));
+            payload["UserName"] = json!(username);
         }
         if let Some(force_stop) = self.force_stop {
-            map.insert("ForceStop".to_string(), json!(force_stop));
+            payload["ForceStop"] = json!(force_stop);
         }
-        Value::Object(map)
+        payload
     }
 }
 
@@ -160,11 +166,6 @@ pub struct DescribeInstanceVncUrlResult {
 }
 
 /// Request payload for `DescribeInstanceVncUrl`.
-///
-/// | Field | Type | Required | Description |
-/// |-------|------|----------|-------------|
-/// | `region` | `&str` | Yes | Target region. |
-/// | `instance_id` | `&str` | Yes | Instance ID whose web console URL is requested. |
 pub struct DescribeInstanceVncUrl<'a> {
     pub region: &'a str,
     pub instance_id: &'a str,
@@ -195,11 +196,6 @@ impl<'a> Endpoint for DescribeInstanceVncUrl<'a> {
 }
 
 /// Request payload for `StartInstances`.
-///
-/// | Field | Type | Required | Description |
-/// |-------|------|----------|-------------|
-/// | `region` | `&str` | Yes | Target region. |
-/// | `instance_ids` | `&[&str]` | Yes | Instance ID list to start. |
 pub struct StartInstances<'a> {
     pub region: &'a str,
     pub instance_ids: &'a [&'a str],
@@ -230,16 +226,10 @@ impl<'a> Endpoint for StartInstances<'a> {
 }
 
 /// Request payload for `RebootInstances`.
-///
-/// | Field | Type | Required | Description |
-/// |-------|------|----------|-------------|
-/// | `region` | `&str` | Yes | Target region. |
-/// | `instance_ids` | `&[&str]` | Yes | Instance ID list to reboot. |
-/// | `reboot_type` | `Option<&str>` | No | Reboot strategy (`SOFT` or `HARD`). |
 pub struct RebootInstances<'a> {
     pub region: &'a str,
     pub instance_ids: &'a [&'a str],
-    pub reboot_type: Option<&'a str>,
+    pub force_reboot: Option<bool>,
 }
 
 impl<'a> Endpoint for RebootInstances<'a> {
@@ -262,28 +252,19 @@ impl<'a> Endpoint for RebootInstances<'a> {
     }
 
     fn payload(&self) -> Value {
-        let mut map = Map::new();
-        map.insert("InstanceIds".to_string(), json!(self.instance_ids));
-        if let Some(value) = self.reboot_type {
-            map.insert("RebootType".to_string(), json!(value));
+        let mut payload = json!({ "InstanceIds": self.instance_ids });
+        if let Some(force_reboot) = self.force_reboot {
+            payload["ForceReboot"] = json!(force_reboot);
         }
-        Value::Object(map)
+        payload
     }
 }
 
 /// Request payload for `StopInstances`.
-///
-/// | Field | Type | Required | Description |
-/// |-------|------|----------|-------------|
-/// | `region` | `&str` | Yes | Target region. |
-/// | `instance_ids` | `&[&str]` | Yes | Instance ID list to stop. |
-/// | `stop_type` | `Option<&str>` | No | Stop strategy (`SOFT` or `HARD`). |
-/// | `stopped_mode` | `Option<&str>` | No | Billing mode after stop (e.g. `KEEP_CHARGING`). |
 pub struct StopInstances<'a> {
     pub region: &'a str,
     pub instance_ids: &'a [&'a str],
     pub stop_type: Option<&'a str>,
-    pub stopped_mode: Option<&'a str>,
 }
 
 impl<'a> Endpoint for StopInstances<'a> {
@@ -306,29 +287,19 @@ impl<'a> Endpoint for StopInstances<'a> {
     }
 
     fn payload(&self) -> Value {
-        let mut map = Map::new();
-        map.insert("InstanceIds".to_string(), json!(self.instance_ids));
-        if let Some(value) = self.stop_type {
-            map.insert("StopType".to_string(), json!(value));
+        let mut payload = json!({ "InstanceIds": self.instance_ids });
+        if let Some(stop_type) = self.stop_type {
+            payload["StopType"] = json!(stop_type);
         }
-        if let Some(value) = self.stopped_mode {
-            map.insert("StoppedMode".to_string(), json!(value));
-        }
-        Value::Object(map)
+        payload
     }
 }
 
 /// Request payload for `ModifyInstancesProject`.
-///
-/// | Field | Type | Required | Description |
-/// |-------|------|----------|-------------|
-/// | `region` | `&str` | Yes | Target region. |
-/// | `instance_ids` | `&[&str]` | Yes | Instance ID list to reassign. |
-/// | `project_id` | `i32` | Yes | Target project ID. |
 pub struct ModifyInstancesProject<'a> {
     pub region: &'a str,
     pub instance_ids: &'a [&'a str],
-    pub project_id: i32,
+    pub project_id: u64,
 }
 
 impl<'a> Endpoint for ModifyInstancesProject<'a> {
@@ -353,25 +324,12 @@ impl<'a> Endpoint for ModifyInstancesProject<'a> {
     fn payload(&self) -> Value {
         json!({
             "InstanceIds": self.instance_ids,
-            "ProjectId": self.project_id,
+            "ProjectId": self.project_id
         })
     }
 }
 
-/// Execute CVM `DescribeInstances` asynchronously.
-///
-/// # Tencent Cloud Reference
-/// | Item | Value |
-/// |------|-------|
-/// | Service | `cvm` |
-/// | Action | `DescribeInstances` |
-/// | Version | `2017-03-12` |
-/// | Rate Limit | 40 req/s |
-///
-/// # Request Parameters
-/// Mirrors [`DescribeInstances`] fields.
-///
-/// Returns [`DescribeInstancesResponse`].
+/// Invoke `DescribeInstances` asynchronously.
 pub async fn describe_instances_async(
     client: &TencentCloudAsync,
     request: &DescribeInstances<'_>,
@@ -379,9 +337,7 @@ pub async fn describe_instances_async(
     client.request(request).await
 }
 
-/// Execute CVM `DescribeInstances` with the blocking client.
-///
-/// Behaviour and parameters match [`describe_instances_async`].
+/// Invoke `DescribeInstances` with the blocking client.
 pub fn describe_instances_blocking(
     client: &TencentCloudBlocking,
     request: &DescribeInstances<'_>,
@@ -389,20 +345,7 @@ pub fn describe_instances_blocking(
     client.request(request)
 }
 
-/// Reset CVM instance passwords asynchronously.
-///
-/// # Tencent Cloud Reference
-/// | Item | Value |
-/// |------|-------|
-/// | Service | `cvm` |
-/// | Action | `ResetInstancesPassword` |
-/// | Version | `2017-03-12` |
-/// | Rate Limit | 10 req/s |
-///
-/// # Request Parameters
-/// Mirrors [`ResetInstancesPassword`] fields.
-///
-/// Returns [`GenericActionResponse`].
+/// Reset instances password asynchronously.
 pub async fn reset_instances_password_async(
     client: &TencentCloudAsync,
     request: &ResetInstancesPassword<'_>,
@@ -410,9 +353,7 @@ pub async fn reset_instances_password_async(
     client.request(request).await
 }
 
-/// Reset CVM instance passwords with the blocking client.
-///
-/// Behaviour and parameters match [`reset_instances_password_async`].
+/// Reset instances password with the blocking client.
 pub fn reset_instances_password_blocking(
     client: &TencentCloudBlocking,
     request: &ResetInstancesPassword<'_>,
@@ -420,17 +361,7 @@ pub fn reset_instances_password_blocking(
     client.request(request)
 }
 
-/// Query VNC URLs for CVM instances asynchronously.
-///
-/// # Tencent Cloud Reference
-/// | Item | Value |
-/// |------|-------|
-/// | Service | `cvm` |
-/// | Action | `DescribeInstanceVncUrl` |
-/// | Version | `2017-03-12` |
-/// | Rate Limit | 10 req/s |
-///
-/// Returns [`DescribeInstanceVncUrlResponse`].
+/// Fetch CVM VNC URL asynchronously.
 pub async fn describe_instance_vnc_url_async(
     client: &TencentCloudAsync,
     request: &DescribeInstanceVncUrl<'_>,
@@ -438,9 +369,7 @@ pub async fn describe_instance_vnc_url_async(
     client.request(request).await
 }
 
-/// Query VNC URLs for CVM instances with the blocking client.
-///
-/// Behaviour and parameters match [`describe_instance_vnc_url_async`].
+/// Fetch CVM VNC URL with the blocking client.
 pub fn describe_instance_vnc_url_blocking(
     client: &TencentCloudBlocking,
     request: &DescribeInstanceVncUrl<'_>,
@@ -449,15 +378,6 @@ pub fn describe_instance_vnc_url_blocking(
 }
 
 /// Start CVM instances asynchronously.
-///
-/// # Tencent Cloud Reference
-/// | Item | Value |
-/// |------|-------|
-/// | Service | `cvm` |
-/// | Action | `StartInstances` |
-/// | Version | `2017-03-12` |
-///
-/// Returns [`GenericActionResponse`].
 pub async fn start_instances_async(
     client: &TencentCloudAsync,
     request: &StartInstances<'_>,
@@ -466,8 +386,6 @@ pub async fn start_instances_async(
 }
 
 /// Start CVM instances with the blocking client.
-///
-/// Behaviour and parameters match [`start_instances_async`].
 pub fn start_instances_blocking(
     client: &TencentCloudBlocking,
     request: &StartInstances<'_>,
@@ -476,15 +394,6 @@ pub fn start_instances_blocking(
 }
 
 /// Reboot CVM instances asynchronously.
-///
-/// # Tencent Cloud Reference
-/// | Item | Value |
-/// |------|-------|
-/// | Service | `cvm` |
-/// | Action | `RebootInstances` |
-/// | Version | `2017-03-12` |
-///
-/// Returns [`GenericActionResponse`].
 pub async fn reboot_instances_async(
     client: &TencentCloudAsync,
     request: &RebootInstances<'_>,
@@ -493,8 +402,6 @@ pub async fn reboot_instances_async(
 }
 
 /// Reboot CVM instances with the blocking client.
-///
-/// Behaviour and parameters match [`reboot_instances_async`].
 pub fn reboot_instances_blocking(
     client: &TencentCloudBlocking,
     request: &RebootInstances<'_>,
@@ -503,15 +410,6 @@ pub fn reboot_instances_blocking(
 }
 
 /// Stop CVM instances asynchronously.
-///
-/// # Tencent Cloud Reference
-/// | Item | Value |
-/// |------|-------|
-/// | Service | `cvm` |
-/// | Action | `StopInstances` |
-/// | Version | `2017-03-12` |
-///
-/// Returns [`GenericActionResponse`].
 pub async fn stop_instances_async(
     client: &TencentCloudAsync,
     request: &StopInstances<'_>,
@@ -520,8 +418,6 @@ pub async fn stop_instances_async(
 }
 
 /// Stop CVM instances with the blocking client.
-///
-/// Behaviour and parameters match [`stop_instances_async`].
 pub fn stop_instances_blocking(
     client: &TencentCloudBlocking,
     request: &StopInstances<'_>,
@@ -530,15 +426,6 @@ pub fn stop_instances_blocking(
 }
 
 /// Change the project of CVM instances asynchronously.
-///
-/// # Tencent Cloud Reference
-/// | Item | Value |
-/// |------|-------|
-/// | Service | `cvm` |
-/// | Action | `ModifyInstancesProject` |
-/// | Version | `2017-03-12` |
-///
-/// Returns [`GenericActionResponse`].
 pub async fn modify_instances_project_async(
     client: &TencentCloudAsync,
     request: &ModifyInstancesProject<'_>,
@@ -547,8 +434,6 @@ pub async fn modify_instances_project_async(
 }
 
 /// Change the project of CVM instances with the blocking client.
-///
-/// Behaviour and parameters match [`modify_instances_project_async`].
 pub fn modify_instances_project_blocking(
     client: &TencentCloudBlocking,
     request: &ModifyInstancesProject<'_>,
@@ -559,13 +444,14 @@ pub fn modify_instances_project_blocking(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::Filter;
 
     #[test]
     fn describe_instances_payload_supports_filters() {
-        let filters = json!([
-            { "Name": "instance-id", "Values": ["ins-123"] },
-            { "Name": "zone", "Values": ["ap-shanghai-1"] }
-        ]);
+        let filters = vec![
+            Filter::new("instance-id", ["ins-123"]),
+            Filter::new("zone", ["ap-shanghai-1"]),
+        ];
         let request = DescribeInstances {
             region: Some("ap-shanghai"),
             filters: Some(filters.clone()),
@@ -574,7 +460,8 @@ mod tests {
         };
 
         let payload = request.payload();
-        assert_eq!(payload["Filters"], filters);
+        assert_eq!(payload["Filters"][0]["Name"], json!("instance-id"));
+        assert_eq!(payload["Filters"][1]["Values"], json!(["ap-shanghai-1"]));
         assert_eq!(payload["Limit"], json!(20));
         assert_eq!(payload["Offset"], json!(0));
     }

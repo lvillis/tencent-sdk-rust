@@ -3,6 +3,7 @@ use thiserror::Error;
 use url::{ParseError, Url};
 
 use crate::signing::SigningError;
+use std::fmt;
 
 pub type TencentCloudResult<T> = Result<T, TencentCloudError>;
 
@@ -21,6 +22,13 @@ pub struct TransportFailure {
     pub url: Url,
 }
 
+#[derive(Debug)]
+pub struct ServiceFailure {
+    pub code: String,
+    pub message: String,
+    pub request_id: Option<String>,
+}
+
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum TencentCloudError {
@@ -35,6 +43,14 @@ pub enum TencentCloudError {
         #[source]
         source: reqwest::Error,
     },
+
+    #[error(
+        "Tencent Cloud service error {code}: {message}{request_id}",
+        code = context.code,
+        message = context.message,
+        request_id = DisplayRequestId(&context.request_id)
+    )]
+    Service { context: Box<ServiceFailure> },
 
     #[error(transparent)]
     Url(#[from] ParseError),
@@ -70,5 +86,31 @@ impl TencentCloudError {
 
     pub fn transport_build(source: reqwest::Error) -> Self {
         Self::TransportBuild { source }
+    }
+
+    pub fn service(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        request_id: Option<String>,
+    ) -> Self {
+        Self::Service {
+            context: Box::new(ServiceFailure {
+                code: code.into(),
+                message: message.into(),
+                request_id,
+            }),
+        }
+    }
+}
+
+struct DisplayRequestId<'a>(&'a Option<String>);
+
+impl fmt::Display for DisplayRequestId<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(value) = self.0 {
+            write!(f, " (request {value})")
+        } else {
+            Ok(())
+        }
     }
 }

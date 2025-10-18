@@ -2,8 +2,8 @@ use crate::{
     client::{TencentCloudAsync, TencentCloudBlocking},
     core::{Endpoint, TencentCloudResult},
 };
-use serde::Deserialize;
-use serde_json::{json, Value};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::borrow::Cow;
 
 #[derive(Debug, Deserialize)]
@@ -57,6 +57,17 @@ impl Default for DescribeProjects {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct DescribeProjectsPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    all_list: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    offset: Option<i32>,
+}
+
 impl Endpoint for DescribeProjects {
     type Output = DescribeProjectsResponse;
 
@@ -73,11 +84,12 @@ impl Endpoint for DescribeProjects {
     }
 
     fn payload(&self) -> Value {
-        json!({
-            "AllList": self.all_list.unwrap_or(1),
-            "Limit": self.limit.unwrap_or(1000),
-            "Offset": self.offset.unwrap_or(0)
-        })
+        let payload = DescribeProjectsPayload {
+            all_list: self.all_list,
+            limit: self.limit,
+            offset: self.offset,
+        };
+        serde_json::to_value(payload).expect("serialize DescribeProjects payload")
     }
 }
 
@@ -115,11 +127,15 @@ mod tests {
 
     #[test]
     fn build_payload_with_defaults() {
-        let request = DescribeProjects::default();
+        let request = DescribeProjects {
+            all_list: Some(1),
+            limit: Some(1000),
+            offset: Some(0),
+        };
         let payload = request.payload();
-        assert_eq!(payload["AllList"], json!(1));
-        assert_eq!(payload["Limit"], json!(1000));
-        assert_eq!(payload["Offset"], json!(0));
+        assert_eq!(payload["AllList"], serde_json::json!(1));
+        assert_eq!(payload["Limit"], serde_json::json!(1000));
+        assert_eq!(payload["Offset"], serde_json::json!(0));
     }
 
     #[test]

@@ -1,65 +1,75 @@
 use crate::{
     client::{TencentCloudAsync, TencentCloudBlocking},
     core::{Endpoint, TencentCloudResult},
+    services::{Filter, Tag},
 };
-use serde::Deserialize;
-use serde_json::{json, Map, Value};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::borrow::Cow;
+use std::collections::HashMap;
 
-#[derive(Clone, Debug)]
-/// Tag key-value pair used by create APIs.
-///
-/// | Field | Type | Description |
-/// |-------|------|-------------|
-/// | `key` | `&str` | Tag key. |
-/// | `value` | `&str` | Tag value. |
-pub struct TagRef<'a> {
-    pub key: &'a str,
-    pub value: &'a str,
-}
+/// Backwards compatible alias for service tags used across VPC APIs.
+pub type TagRef<'a> = Tag<'a>;
 
 #[derive(Debug, Deserialize)]
-/// Response payload returned by VPC `DescribeVpcs`.
-///
-/// | Field | Type | Description |
-/// |-------|------|-------------|
-/// | `response` | [`DescribeVpcsResult`] | Result body containing VPC metadata. |
 pub struct DescribeVpcsResponse {
     #[serde(rename = "Response")]
     pub response: DescribeVpcsResult,
 }
 
 #[derive(Debug, Deserialize)]
-/// Detailed fields exposed by VPC listings.
-///
-/// | Field | Type | Description |
-/// |-------|------|-------------|
-/// | `total_count` | `Option<u64>` | Number of VPCs matching the query. |
-/// | `vpc_set` | `Option<Vec<Value>>` | Raw VPC array returned by Tencent Cloud. |
-/// | `request_id` | `String` | Unique request identifier. |
 pub struct DescribeVpcsResult {
     #[serde(rename = "TotalCount")]
     pub total_count: Option<u64>,
     #[serde(rename = "VpcSet")]
-    pub vpc_set: Option<Vec<Value>>,
+    pub vpc_set: Option<Vec<VpcSummary>>,
     #[serde(rename = "RequestId")]
     pub request_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct VpcSummary {
+    #[serde(rename = "VpcId")]
+    pub vpc_id: Option<String>,
+    #[serde(rename = "VpcName")]
+    pub vpc_name: Option<String>,
+    #[serde(rename = "CidrBlock")]
+    pub cidr_block: Option<String>,
+    #[serde(rename = "IsDefault")]
+    pub is_default: Option<bool>,
+    #[serde(rename = "EnableMulticast")]
+    pub enable_multicast: Option<bool>,
+    #[serde(rename = "TagSet")]
+    pub tag_set: Option<Vec<ResourceTag>>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResourceTag {
+    #[serde(rename = "Key")]
+    pub key: Option<String>,
+    #[serde(rename = "Value")]
+    pub value: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct DescribeVpcsPayload<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vpc_ids: Option<&'a [&'a str]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filters: Option<&'a [Filter<'a>]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    offset: Option<u32>,
+}
+
 /// Request parameters for VPC `DescribeVpcs`.
-///
-/// | Field | Type | Required | Description |
-/// |-------|------|----------|-------------|
-/// | `region` | `Option<&str>` | Yes* | Target region or use client default. |
-/// | `filters` | `Option<Value>` | No | Tencent Cloud filter objects (name/value). |
-/// | `vpc_ids` | `Option<Vec<&str>>` | No | Explicit VPC ID list. |
-/// | `limit` | `Option<u32>` | No | Page size (default 20, max 100). |
-/// | `offset` | `Option<u32>` | No | Pagination offset. |
-///
-/// *Required unless a default region is configured on the client builder.
 pub struct DescribeVpcs<'a> {
     pub region: Option<&'a str>,
-    pub filters: Option<Value>,
+    pub filters: Option<Vec<Filter<'a>>>,
     pub vpc_ids: Option<Vec<&'a str>>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
@@ -85,61 +95,46 @@ impl<'a> Endpoint for DescribeVpcs<'a> {
     }
 
     fn payload(&self) -> Value {
-        let mut map = Map::new();
-        if let Some(ids) = &self.vpc_ids {
-            map.insert("VpcIds".to_string(), json!(ids));
-        }
-        if let Some(filters) = &self.filters {
-            map.insert("Filters".to_string(), filters.clone());
-        }
-        if let Some(limit) = self.limit {
-            map.insert("Limit".to_string(), json!(limit));
-        }
-        if let Some(offset) = self.offset {
-            map.insert("Offset".to_string(), json!(offset));
-        }
-        Value::Object(map)
+        let payload = DescribeVpcsPayload {
+            vpc_ids: self.vpc_ids.as_deref(),
+            filters: self.filters.as_deref(),
+            limit: self.limit,
+            offset: self.offset,
+        };
+        serde_json::to_value(payload).expect("serialize DescribeVpcs payload")
     }
 }
 
 #[derive(Debug, Deserialize)]
-/// Response payload returned by VPC `CreateVpc`.
-///
-/// | Field | Type | Description |
-/// |-------|------|-------------|
-/// | `response` | [`CreateVpcResult`] | Result body containing the created VPC descriptor. |
 pub struct CreateVpcResponse {
     #[serde(rename = "Response")]
     pub response: CreateVpcResult,
 }
 
 #[derive(Debug, Deserialize)]
-/// Result fields produced by VPC `CreateVpc`.
-///
-/// | Field | Type | Description |
-/// |-------|------|-------------|
-/// | `vpc` | `Option<Value>` | Raw VPC data returned by Tencent Cloud. |
-/// | `request_id` | `String` | Unique request identifier. |
 pub struct CreateVpcResult {
     #[serde(rename = "Vpc")]
-    pub vpc: Option<Value>,
+    pub vpc: Option<VpcSummary>,
     #[serde(rename = "RequestId")]
     pub request_id: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct CreateVpcPayload<'a> {
+    vpc_name: &'a str,
+    cidr_block: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enable_multicast: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dns_servers: Option<&'a [&'a str]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    domain_name: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tags: Option<&'a [Tag<'a>]>,
+}
+
 /// Request parameters for VPC `CreateVpc`.
-///
-/// | Field | Type | Required | Description |
-/// |-------|------|----------|-------------|
-/// | `region` | `Option<&str>` | Yes* | Target region or use client default. |
-/// | `vpc_name` | `&str` | Yes | Custom VPC name. |
-/// | `cidr_block` | `&str` | Yes | CIDR block, e.g. `10.0.0.0/16`. |
-/// | `enable_multicast` | `Option<bool>` | No | Whether to enable multicast (defaults to false). |
-/// | `dns_servers` | `Option<Vec<&str>>` | No | Custom DNS servers. |
-/// | `domain_name` | `Option<&str>` | No | Custom domain name. |
-/// | `tags` | `Option<Vec<TagRef<'a>>>` | No | Tag list to associate with the VPC. |
-///
-/// *Required unless a default region is configured on the client builder.
 pub struct CreateVpc<'a> {
     pub region: Option<&'a str>,
     pub vpc_name: &'a str,
@@ -147,7 +142,7 @@ pub struct CreateVpc<'a> {
     pub enable_multicast: Option<bool>,
     pub dns_servers: Option<Vec<&'a str>>,
     pub domain_name: Option<&'a str>,
-    pub tags: Option<Vec<TagRef<'a>>>,
+    pub tags: Option<Vec<Tag<'a>>>,
 }
 
 impl<'a> Endpoint for CreateVpc<'a> {
@@ -170,67 +165,62 @@ impl<'a> Endpoint for CreateVpc<'a> {
     }
 
     fn payload(&self) -> Value {
-        let mut map = Map::new();
-        map.insert("VpcName".to_string(), json!(self.vpc_name));
-        map.insert("CidrBlock".to_string(), json!(self.cidr_block));
-        if let Some(multicast) = self.enable_multicast {
-            map.insert("EnableMulticast".to_string(), json!(multicast));
-        }
-        if let Some(dns) = &self.dns_servers {
-            map.insert("DnsServers".to_string(), json!(dns));
-        }
-        if let Some(domain) = self.domain_name {
-            map.insert("DomainName".to_string(), json!(domain));
-        }
-        if let Some(tags) = &self.tags {
-            let arr: Vec<Value> = tags
-                .iter()
-                .map(|tag| json!({ "Key": tag.key, "Value": tag.value }))
-                .collect();
-            map.insert("Tags".to_string(), Value::Array(arr));
-        }
-        Value::Object(map)
+        let payload = CreateVpcPayload {
+            vpc_name: self.vpc_name,
+            cidr_block: self.cidr_block,
+            enable_multicast: self.enable_multicast,
+            dns_servers: self.dns_servers.as_deref(),
+            domain_name: self.domain_name,
+            tags: self.tags.as_deref(),
+        };
+        serde_json::to_value(payload).expect("serialize CreateVpc payload")
     }
 }
 
 #[derive(Debug, Deserialize)]
-/// Response payload returned by VPC `CreateSubnet`.
-///
-/// | Field | Type | Description |
-/// |-------|------|-------------|
-/// | `response` | [`CreateSubnetResult`] | Result body containing subnet descriptor. |
 pub struct CreateSubnetResponse {
     #[serde(rename = "Response")]
     pub response: CreateSubnetResult,
 }
 
 #[derive(Debug, Deserialize)]
-/// Result fields produced by VPC `CreateSubnet`.
-///
-/// | Field | Type | Description |
-/// |-------|------|-------------|
-/// | `subnet` | `Option<Value>` | Raw subnet data returned by Tencent Cloud. |
-/// | `request_id` | `String` | Unique request identifier. |
 pub struct CreateSubnetResult {
     #[serde(rename = "Subnet")]
-    pub subnet: Option<Value>,
+    pub subnet: Option<SubnetSummary>,
     #[serde(rename = "RequestId")]
     pub request_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SubnetSummary {
+    #[serde(rename = "SubnetId")]
+    pub subnet_id: Option<String>,
+    #[serde(rename = "SubnetName")]
+    pub subnet_name: Option<String>,
+    #[serde(rename = "CidrBlock")]
+    pub cidr_block: Option<String>,
+    #[serde(rename = "Zone")]
+    pub zone: Option<String>,
+    #[serde(rename = "IsDefault")]
+    pub is_default: Option<bool>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct CreateSubnetPayload<'a> {
+    vpc_id: &'a str,
+    subnet_name: &'a str,
+    cidr_block: &'a str,
+    zone: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    is_default: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tags: Option<&'a [Tag<'a>]>,
+}
+
 /// Request parameters for VPC `CreateSubnet`.
-///
-/// | Field | Type | Required | Description |
-/// |-------|------|----------|-------------|
-/// | `region` | `Option<&str>` | Yes* | Target region or use client default. |
-/// | `vpc_id` | `&str` | Yes | VPC identifier containing the subnet. |
-/// | `subnet_name` | `&str` | Yes | Subnet name. |
-/// | `cidr_block` | `&str` | Yes | Subnet CIDR block. |
-/// | `zone` | `&str` | Yes | Availability zone. |
-/// | `is_default` | `Option<bool>` | No | Whether subnet is default. |
-/// | `tags` | `Option<Vec<TagRef<'a>>>` | No | Tags to attach. |
-///
-/// *Required unless a default region is configured on the client builder.
 pub struct CreateSubnet<'a> {
     pub region: Option<&'a str>,
     pub vpc_id: &'a str,
@@ -238,7 +228,7 @@ pub struct CreateSubnet<'a> {
     pub cidr_block: &'a str,
     pub zone: &'a str,
     pub is_default: Option<bool>,
-    pub tags: Option<Vec<TagRef<'a>>>,
+    pub tags: Option<Vec<Tag<'a>>>,
 }
 
 impl<'a> Endpoint for CreateSubnet<'a> {
@@ -261,67 +251,53 @@ impl<'a> Endpoint for CreateSubnet<'a> {
     }
 
     fn payload(&self) -> Value {
-        let mut map = Map::new();
-        map.insert("VpcId".to_string(), json!(self.vpc_id));
-        map.insert("SubnetName".to_string(), json!(self.subnet_name));
-        map.insert("CidrBlock".to_string(), json!(self.cidr_block));
-        map.insert("Zone".to_string(), json!(self.zone));
-        if let Some(is_default) = self.is_default {
-            map.insert("IsDefault".to_string(), json!(is_default));
-        }
-        if let Some(tags) = &self.tags {
-            let arr: Vec<Value> = tags
-                .iter()
-                .map(|tag| json!({ "Key": tag.key, "Value": tag.value }))
-                .collect();
-            map.insert("Tags".to_string(), Value::Array(arr));
-        }
-        Value::Object(map)
+        let payload = CreateSubnetPayload {
+            vpc_id: self.vpc_id,
+            subnet_name: self.subnet_name,
+            cidr_block: self.cidr_block,
+            zone: self.zone,
+            is_default: self.is_default,
+            tags: self.tags.as_deref(),
+        };
+        serde_json::to_value(payload).expect("serialize CreateSubnet payload")
     }
 }
+
 #[derive(Debug, Deserialize)]
-/// Response payload returned by VPC `DescribeSubnets`.
-///
-/// | Field | Type | Description |
-/// |-------|------|-------------|
-/// | `response` | [`DescribeSubnetsResult`] | Result body containing subnet metadata. |
 pub struct DescribeSubnetsResponse {
     #[serde(rename = "Response")]
     pub response: DescribeSubnetsResult,
 }
 
 #[derive(Debug, Deserialize)]
-/// Detailed fields exposed by subnet listings.
-///
-/// | Field | Type | Description |
-/// |-------|------|-------------|
-/// | `total_count` | `Option<u64>` | Number of subnets matching the query. |
-/// | `subnet_set` | `Option<Vec<Value>>` | Raw subnet array returned by Tencent Cloud. |
-/// | `request_id` | `String` | Unique request identifier. |
 pub struct DescribeSubnetsResult {
     #[serde(rename = "TotalCount")]
     pub total_count: Option<u64>,
     #[serde(rename = "SubnetSet")]
-    pub subnet_set: Option<Vec<Value>>,
+    pub subnet_set: Option<Vec<SubnetSummary>>,
     #[serde(rename = "RequestId")]
     pub request_id: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct DescribeSubnetsPayload<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filters: Option<&'a [Filter<'a>]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    subnet_ids: Option<&'a [&'a str]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vpc_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    offset: Option<u32>,
+}
+
 /// Request parameters for VPC `DescribeSubnets`.
-///
-/// | Field | Type | Required | Description |
-/// |-------|------|----------|-------------|
-/// | `region` | `Option<&str>` | Yes* | Target region or use client default. |
-/// | `filters` | `Option<Value>` | No | Tencent Cloud filters to scope subnets. |
-/// | `subnet_ids` | `Option<Vec<&str>>` | No | Explicit subnet ID list. |
-/// | `vpc_id` | `Option<&str>` | No | Restrict results to a specific VPC. |
-/// | `limit` | `Option<u32>` | No | Page size (default 20, max 100). |
-/// | `offset` | `Option<u32>` | No | Pagination offset. |
-///
-/// *Required unless a default region is configured on the client builder.
 pub struct DescribeSubnets<'a> {
     pub region: Option<&'a str>,
-    pub filters: Option<Value>,
+    pub filters: Option<Vec<Filter<'a>>>,
     pub subnet_ids: Option<Vec<&'a str>>,
     pub vpc_id: Option<&'a str>,
     pub limit: Option<u32>,
@@ -348,37 +324,18 @@ impl<'a> Endpoint for DescribeSubnets<'a> {
     }
 
     fn payload(&self) -> Value {
-        let mut map = Map::new();
-        if let Some(ids) = &self.subnet_ids {
-            map.insert("SubnetIds".to_string(), json!(ids));
-        }
-        if let Some(filters) = &self.filters {
-            map.insert("Filters".to_string(), filters.clone());
-        }
-        if let Some(vpc_id) = self.vpc_id {
-            map.insert("VpcId".to_string(), json!(vpc_id));
-        }
-        if let Some(limit) = self.limit {
-            map.insert("Limit".to_string(), json!(limit));
-        }
-        if let Some(offset) = self.offset {
-            map.insert("Offset".to_string(), json!(offset));
-        }
-        Value::Object(map)
+        let payload = DescribeSubnetsPayload {
+            filters: self.filters.as_deref(),
+            subnet_ids: self.subnet_ids.as_deref(),
+            vpc_id: self.vpc_id,
+            limit: self.limit,
+            offset: self.offset,
+        };
+        serde_json::to_value(payload).expect("serialize DescribeSubnets payload")
     }
 }
 
-/// List VPCs asynchronously via `DescribeVpcs`.
-///
-/// # Tencent Cloud Reference
-/// | Item | Value |
-/// |------|-------|
-/// | Service | `vpc` |
-/// | Action | `DescribeVpcs` |
-/// | Version | `2017-03-12` |
-/// | Rate Limit | 20 req/s |
-///
-/// Returns [`DescribeVpcsResponse`].
+/// Call `DescribeVpcs` asynchronously.
 pub async fn describe_vpcs_async(
     client: &TencentCloudAsync,
     request: &DescribeVpcs<'_>,
@@ -386,9 +343,7 @@ pub async fn describe_vpcs_async(
     client.request(request).await
 }
 
-/// List VPCs with the blocking client.
-///
-/// Behaviour and parameters match [`describe_vpcs_async`].
+/// Call `DescribeVpcs` with the blocking client.
 pub fn describe_vpcs_blocking(
     client: &TencentCloudBlocking,
     request: &DescribeVpcs<'_>,
@@ -396,44 +351,7 @@ pub fn describe_vpcs_blocking(
     client.request(request)
 }
 
-/// List subnets asynchronously via `DescribeSubnets`.
-///
-/// # Tencent Cloud Reference
-/// | Item | Value |
-/// |------|-------|
-/// | Service | `vpc` |
-/// | Action | `DescribeSubnets` |
-/// | Version | `2017-03-12` |
-/// | Rate Limit | 20 req/s |
-///
-/// Returns [`DescribeSubnetsResponse`].
-pub async fn describe_subnets_async(
-    client: &TencentCloudAsync,
-    request: &DescribeSubnets<'_>,
-) -> TencentCloudResult<DescribeSubnetsResponse> {
-    client.request(request).await
-}
-
-/// List subnets with the blocking client.
-///
-/// Behaviour and parameters match [`describe_subnets_async`].
-pub fn describe_subnets_blocking(
-    client: &TencentCloudBlocking,
-    request: &DescribeSubnets<'_>,
-) -> TencentCloudResult<DescribeSubnetsResponse> {
-    client.request(request)
-}
-/// Create a VPC asynchronously via `CreateVpc`.
-///
-/// # Tencent Cloud Reference
-/// | Item | Value |
-/// |------|-------|
-/// | Service | `vpc` |
-/// | Action | `CreateVpc` |
-/// | Version | `2017-03-12` |
-/// | Rate Limit | 20 req/s |
-///
-/// Returns [`CreateVpcResponse`].
+/// Create a VPC asynchronously.
 pub async fn create_vpc_async(
     client: &TencentCloudAsync,
     request: &CreateVpc<'_>,
@@ -442,8 +360,6 @@ pub async fn create_vpc_async(
 }
 
 /// Create a VPC with the blocking client.
-///
-/// Behaviour and parameters match [`create_vpc_async`].
 pub fn create_vpc_blocking(
     client: &TencentCloudBlocking,
     request: &CreateVpc<'_>,
@@ -451,17 +367,7 @@ pub fn create_vpc_blocking(
     client.request(request)
 }
 
-/// Create a subnet asynchronously via `CreateSubnet`.
-///
-/// # Tencent Cloud Reference
-/// | Item | Value |
-/// |------|-------|
-/// | Service | `vpc` |
-/// | Action | `CreateSubnet` |
-/// | Version | `2017-03-12` |
-/// | Rate Limit | 20 req/s |
-///
-/// Returns [`CreateSubnetResponse`].
+/// Create a subnet asynchronously.
 pub async fn create_subnet_async(
     client: &TencentCloudAsync,
     request: &CreateSubnet<'_>,
@@ -470,12 +376,26 @@ pub async fn create_subnet_async(
 }
 
 /// Create a subnet with the blocking client.
-///
-/// Behaviour and parameters match [`create_subnet_async`].
 pub fn create_subnet_blocking(
     client: &TencentCloudBlocking,
     request: &CreateSubnet<'_>,
 ) -> TencentCloudResult<CreateSubnetResponse> {
+    client.request(request)
+}
+
+/// Describe subnets asynchronously.
+pub async fn describe_subnets_async(
+    client: &TencentCloudAsync,
+    request: &DescribeSubnets<'_>,
+) -> TencentCloudResult<DescribeSubnetsResponse> {
+    client.request(request).await
+}
+
+/// Describe subnets with the blocking client.
+pub fn describe_subnets_blocking(
+    client: &TencentCloudBlocking,
+    request: &DescribeSubnets<'_>,
+) -> TencentCloudResult<DescribeSubnetsResponse> {
     client.request(request)
 }
 
@@ -485,9 +405,7 @@ mod tests {
 
     #[test]
     fn describe_vpcs_payload_contains_ids_and_filters() {
-        let filters = json!([
-            { "Name": "vpc-name", "Values": ["prod"] }
-        ]);
+        let filters = vec![Filter::new("vpc-name", ["prod"])];
         let request = DescribeVpcs {
             region: Some("ap-shanghai"),
             filters: Some(filters.clone()),
@@ -497,10 +415,11 @@ mod tests {
         };
 
         let payload = request.payload();
-        assert_eq!(payload["VpcIds"], json!(["vpc-123", "vpc-456"]));
-        assert_eq!(payload["Filters"], filters);
-        assert_eq!(payload["Limit"], json!(50));
-        assert_eq!(payload["Offset"], json!(10));
+        assert_eq!(payload["VpcIds"], serde_json::json!(["vpc-123", "vpc-456"]));
+        assert_eq!(payload["Filters"][0]["Name"], serde_json::json!("vpc-name"));
+        assert_eq!(payload["Filters"][0]["Values"], serde_json::json!(["prod"]));
+        assert_eq!(payload["Limit"], serde_json::json!(50));
+        assert_eq!(payload["Offset"], serde_json::json!(10));
     }
 
     #[test]
@@ -512,19 +431,22 @@ mod tests {
             enable_multicast: Some(true),
             dns_servers: Some(vec!["1.1.1.1", "8.8.8.8"]),
             domain_name: Some("local"),
-            tags: Some(vec![TagRef {
-                key: "env",
-                value: "test",
-            }]),
+            tags: Some(vec![Tag::new("env", "test")]),
         };
 
         let payload = request.payload();
-        assert_eq!(payload["VpcName"], json!("demo"));
-        assert_eq!(payload["CidrBlock"], json!("10.0.0.0/16"));
-        assert_eq!(payload["EnableMulticast"], json!(true));
-        assert_eq!(payload["DnsServers"], json!(["1.1.1.1", "8.8.8.8"]));
-        assert_eq!(payload["DomainName"], json!("local"));
-        assert_eq!(payload["Tags"], json!([{"Key": "env", "Value": "test"}]));
+        assert_eq!(payload["VpcName"], serde_json::json!("demo"));
+        assert_eq!(payload["CidrBlock"], serde_json::json!("10.0.0.0/16"));
+        assert_eq!(payload["EnableMulticast"], serde_json::json!(true));
+        assert_eq!(
+            payload["DnsServers"],
+            serde_json::json!(["1.1.1.1", "8.8.8.8"])
+        );
+        assert_eq!(payload["DomainName"], serde_json::json!("local"));
+        assert_eq!(
+            payload["Tags"],
+            serde_json::json!([{"Key": "env", "Value": "test"}])
+        );
     }
 
     #[test]
@@ -536,19 +458,19 @@ mod tests {
             cidr_block: "10.0.1.0/24",
             zone: "ap-beijing-1",
             is_default: Some(false),
-            tags: Some(vec![TagRef {
-                key: "team",
-                value: "core",
-            }]),
+            tags: Some(vec![Tag::new("team", "core")]),
         };
 
         let payload = request.payload();
-        assert_eq!(payload["VpcId"], json!("vpc-123"));
-        assert_eq!(payload["SubnetName"], json!("subnet-1"));
-        assert_eq!(payload["CidrBlock"], json!("10.0.1.0/24"));
-        assert_eq!(payload["Zone"], json!("ap-beijing-1"));
-        assert_eq!(payload["IsDefault"], json!(false));
-        assert_eq!(payload["Tags"], json!([{"Key": "team", "Value": "core"}]));
+        assert_eq!(payload["VpcId"], serde_json::json!("vpc-123"));
+        assert_eq!(payload["SubnetName"], serde_json::json!("subnet-1"));
+        assert_eq!(payload["CidrBlock"], serde_json::json!("10.0.1.0/24"));
+        assert_eq!(payload["Zone"], serde_json::json!("ap-beijing-1"));
+        assert_eq!(payload["IsDefault"], serde_json::json!(false));
+        assert_eq!(
+            payload["Tags"],
+            serde_json::json!([{"Key": "team", "Value": "core"}])
+        );
     }
 
     #[test]
@@ -561,6 +483,10 @@ mod tests {
         }"#;
         let parsed: CreateVpcResponse = serde_json::from_str(payload).unwrap();
         assert_eq!(parsed.response.request_id, "req-123");
+        assert_eq!(
+            parsed.response.vpc.unwrap().vpc_id.as_deref(),
+            Some("vpc-abc")
+        );
     }
 
     #[test]
@@ -573,6 +499,10 @@ mod tests {
         }"#;
         let parsed: CreateSubnetResponse = serde_json::from_str(payload).unwrap();
         assert_eq!(parsed.response.request_id, "req-456");
+        assert_eq!(
+            parsed.response.subnet.unwrap().subnet_id.as_deref(),
+            Some("subnet-xyz")
+        );
     }
 
     #[test]
@@ -587,7 +517,7 @@ mod tests {
         };
 
         let payload = request.payload();
-        assert_eq!(payload["SubnetIds"], json!(["subnet-aaa"]));
-        assert_eq!(payload["VpcId"], json!("vpc-zzz"));
+        assert_eq!(payload["SubnetIds"], serde_json::json!(["subnet-aaa"]));
+        assert_eq!(payload["VpcId"], serde_json::json!("vpc-zzz"));
     }
 }

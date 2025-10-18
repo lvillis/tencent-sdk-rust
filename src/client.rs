@@ -14,7 +14,7 @@ use std::time::Duration;
 use url::Url;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
-const DEFAULT_USER_AGENT: &str = "tencent-sdk-rust";
+const DEFAULT_USER_AGENT: &str = concat!("tencent-sdk-rust/", env!("CARGO_PKG_VERSION"));
 
 pub struct TencentCloudAsyncBuilder<T = DefaultAsyncTransport> {
     credentials: Credentials,
@@ -245,6 +245,9 @@ impl<T: AsyncTransport> TencentCloudAsync<T> {
         }
 
         let json: Value = serde_json::from_str(&text)?;
+        if let Some(err) = service_error_from_value(&json) {
+            return Err(err);
+        }
         endpoint.parse(json)
     }
 }
@@ -480,6 +483,20 @@ impl<T: BlockingTransport> TencentCloudBlocking<T> {
         }
 
         let json: Value = serde_json::from_str(&text)?;
+        if let Some(err) = service_error_from_value(&json) {
+            return Err(err);
+        }
         endpoint.parse(json)
     }
+}
+
+fn service_error_from_value(value: &Value) -> Option<TencentCloudError> {
+    let response = value.get("Response")?;
+    let error = response.get("Error")?;
+    let code = error.get("Code")?.as_str()?.to_string();
+    let message = error.get("Message")?.as_str()?.to_string();
+    let request_id = response
+        .get("RequestId")
+        .and_then(|id| id.as_str().map(|s| s.to_string()));
+    Some(TencentCloudError::service(code, message, request_id))
 }

@@ -121,3 +121,46 @@ fn hmac_sha256(key: &[u8], msg: &str) -> Vec<u8> {
     mac.update(msg.as_bytes());
     mac.finalize().into_bytes().to_vec()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn tc3_authorization_snapshot_matches_reference() {
+        let credentials = Credentials::new(
+            "AKIDz8krbsJ5yKBZQpn74WFkmLPx3xxxx",
+            "Gu5t9xGARNpq86cd98joQYCN3Cozxxxx",
+        );
+        let payload = json!({
+            "Limit": 1,
+            "Filters": [
+                { "Name": "zone", "Values": ["ap-guangzhou-1"] }
+            ]
+        })
+        .to_string();
+        let headers = build_tc3_headers(
+            &credentials,
+            &SigningInput {
+                service: "cvm",
+                host: "cvm.tencentcloudapi.com",
+                path: "/",
+                region: Some("ap-guangzhou"),
+                action: "DescribeInstances",
+                version: "2017-03-12",
+                payload: &payload,
+                timestamp: 1551113065,
+            },
+        )
+        .expect("build headers");
+
+        let authorization = headers
+            .get("Authorization")
+            .expect("authorization header exists");
+        assert_eq!(
+            authorization,
+            "TC3-HMAC-SHA256 Credential=AKIDz8krbsJ5yKBZQpn74WFkmLPx3xxxx/2019-02-25/cvm/tc3_request, SignedHeaders=content-type;host;x-tc-action, Signature=fb562f0e44f0c7f0afa9eff2998c6fc41e053d0efa3741b068332b545afdb587"
+        );
+    }
+}
