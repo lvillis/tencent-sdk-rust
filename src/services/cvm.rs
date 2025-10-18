@@ -19,7 +19,8 @@ pub struct DescribeInstancesResult {
     #[serde(rename = "TotalCount")]
     pub total_count: Option<u64>,
     #[serde(rename = "InstanceSet")]
-    pub instance_set: Option<Vec<InstanceSummary>>,
+    #[serde(default)]
+    pub instance_set: Vec<InstanceSummary>,
     #[serde(rename = "RequestId")]
     pub request_id: String,
 }
@@ -42,7 +43,33 @@ pub struct InstanceSummary {
     pub private_ip_addresses: Option<Vec<String>>,
     #[serde(rename = "PublicIpAddresses")]
     pub public_ip_addresses: Option<Vec<String>>,
-    #[serde(flatten)]
+    #[serde(default)]
+    pub placement: Option<InstancePlacement>,
+    #[serde(default)]
+    pub system_disk: Option<DiskSummary>,
+    #[serde(default)]
+    pub data_disks: Option<Vec<DiskSummary>>,
+    #[serde(flatten, default)]
+    pub extra: HashMap<String, Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InstancePlacement {
+    #[serde(rename = "Zone")]
+    pub zone: Option<String>,
+    #[serde(rename = "ProjectId")]
+    pub project_id: Option<i64>,
+    #[serde(flatten, default)]
+    pub extra: HashMap<String, Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DiskSummary {
+    #[serde(rename = "DiskType")]
+    pub disk_type: Option<String>,
+    #[serde(rename = "DiskSize")]
+    pub disk_size: Option<u64>,
+    #[serde(flatten, default)]
     pub extra: HashMap<String, Value>,
 }
 
@@ -63,6 +90,48 @@ pub struct DescribeInstances<'a> {
     pub filters: Option<Vec<Filter<'a>>>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
+}
+
+impl<'a> Default for DescribeInstances<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> DescribeInstances<'a> {
+    /// Create an empty request configuration.
+    pub fn new() -> Self {
+        Self {
+            region: None,
+            filters: None,
+            limit: None,
+            offset: None,
+        }
+    }
+
+    /// Set the target region for the request.
+    pub fn with_region(mut self, region: &'a str) -> Self {
+        self.region = Some(region);
+        self
+    }
+
+    /// Add a filter to the request.
+    pub fn push_filter(mut self, filter: Filter<'a>) -> Self {
+        self.filters.get_or_insert_with(Vec::new).push(filter);
+        self
+    }
+
+    /// Override the maximum number of items to return.
+    pub fn with_limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    /// Provide an offset for pagination.
+    pub fn with_offset(mut self, offset: u32) -> Self {
+        self.offset = Some(offset);
+        self
+    }
 }
 
 impl<'a> Endpoint for DescribeInstances<'a> {
@@ -490,5 +559,22 @@ mod tests {
             parsed.response.instance_vnc_url.as_deref(),
             Some("https://example.com")
         );
+    }
+
+    #[test]
+    fn describe_instances_builder_accumulates_filters() {
+        let request = DescribeInstances::new()
+            .with_region("ap-guangzhou")
+            .push_filter(Filter::new("zone", ["ap-guangzhou-1"]))
+            .with_limit(10)
+            .with_offset(5);
+
+        assert_eq!(request.region, Some("ap-guangzhou"));
+        let filters = request.filters.as_ref().expect("filters set");
+        assert_eq!(filters.len(), 1);
+        assert_eq!(filters[0].name, "zone");
+        assert_eq!(filters[0].values[0], "ap-guangzhou-1");
+        assert_eq!(request.limit, Some(10));
+        assert_eq!(request.offset, Some(5));
     }
 }

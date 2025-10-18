@@ -45,7 +45,10 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 use tencent_sdk::{
     client::TencentCloudAsync,
     core::{TencentCloudError, TencentCloudResult},
-    services::cvm::{DescribeInstances, DescribeInstancesResponse},
+    services::{
+        cvm::{DescribeInstances, DescribeInstancesResponse},
+        Filter,
+    },
 };
 
 async fn describe_instances() -> TencentCloudResult<DescribeInstancesResponse> {
@@ -58,14 +61,12 @@ async fn describe_instances() -> TencentCloudResult<DescribeInstancesResponse> {
         .with_retry(3, std::time::Duration::from_millis(200))
         .build()?;
 
-    client
-        .request(&DescribeInstances {
-            region: None,
-            filters: None,
-            limit: Some(20),
-            offset: None,
-        })
-        .await
+    let request = DescribeInstances::new()
+        .with_region("ap-guangzhou")
+        .with_limit(20)
+        .push_filter(Filter::new("instance-name", ["example"]));
+
+    client.request(&request).await
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -98,10 +99,11 @@ fn fetch_balance() -> tencent_sdk::core::TencentCloudResult<()> {
 
 ## Features
 
-- **Asynchronous Support**: Built on Tokio for high concurrency.
-- **Request Signing**: Implements Tencent Cloud's TC3-HMAC-SHA256 signature algorithm.
-- **Detailed Documentation**: Each interface is documented with detailed input/output parameter tables.
-- **Comprehensive Testing**: Each service interface includes test cases to ensure correct functionality.
+- **Asynchronous & Blocking Clients**: Tokio-powered async client plus a reqwest blocking client sharing configuration and retry middleware.
+- **TC3 Signing Utilities**: Reusable helpers to construct compliant TC3-HMAC-SHA256 headers.
+- **Strongly Typed Services**: Service modules expose typed request/response models and ergonomic builders for filters, tags, and pagination.
+- **Actionable Error Taxonomy**: Service errors are classified (auth, throttled, forbidden, etc.) via `ServiceErrorKind` for easier recovery logic.
+- **Expanded Test Coverage**: Wiremock-backed integration flows and deterministic signing snapshots keep regressions in check.
 
 # Implemented Interfaces
 

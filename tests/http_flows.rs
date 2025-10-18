@@ -145,6 +145,7 @@ async fn async_client_reports_service_error() {
             assert_eq!(context.code, "AuthFailure");
             assert_eq!(context.message, "signature mismatch");
             assert_eq!(context.request_id.as_deref(), Some("req-123"));
+            assert_eq!(context.kind(), tencent_sdk::core::ServiceErrorKind::Auth);
         }
         other => panic!("unexpected error: {other:?}"),
     }
@@ -217,6 +218,10 @@ async fn blocking_client_reports_service_error() {
             assert_eq!(context.code, "OperationDenied");
             assert_eq!(context.message, "capacity exceeded");
             assert_eq!(context.request_id.as_deref(), Some("req-456"));
+            assert_eq!(
+                context.kind(),
+                tencent_sdk::core::ServiceErrorKind::Forbidden
+            );
         }
         other => panic!("unexpected error: {other:?}"),
     }

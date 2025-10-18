@@ -29,7 +29,8 @@ pub struct DescribeProjectsResult {
     #[serde(rename = "TotalCount")]
     pub total_count: Option<u64>,
     #[serde(rename = "ProjectSet")]
-    pub project_set: Option<Vec<Value>>,
+    #[serde(default)]
+    pub project_set: Vec<Value>,
     #[serde(rename = "RequestId")]
     pub request_id: String,
 }
@@ -54,6 +55,32 @@ impl Default for DescribeProjects {
             limit: Some(1000),
             offset: Some(0),
         }
+    }
+}
+
+impl DescribeProjects {
+    /// Construct a request with no overrides.
+    pub fn new() -> Self {
+        Self {
+            all_list: None,
+            limit: None,
+            offset: None,
+        }
+    }
+
+    pub fn include_all(mut self, yes: bool) -> Self {
+        self.all_list = Some(if yes { 1 } else { 0 });
+        self
+    }
+
+    pub fn with_limit(mut self, limit: i32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn with_offset(mut self, offset: i32) -> Self {
+        self.offset = Some(offset);
+        self
     }
 }
 
@@ -136,6 +163,18 @@ mod tests {
         assert_eq!(payload["AllList"], serde_json::json!(1));
         assert_eq!(payload["Limit"], serde_json::json!(1000));
         assert_eq!(payload["Offset"], serde_json::json!(0));
+    }
+
+    #[test]
+    fn describe_projects_builder_configures_fields() {
+        let request = DescribeProjects::new()
+            .include_all(true)
+            .with_limit(50)
+            .with_offset(5);
+
+        assert_eq!(request.all_list, Some(1));
+        assert_eq!(request.limit, Some(50));
+        assert_eq!(request.offset, Some(5));
     }
 
     #[test]

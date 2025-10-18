@@ -22,7 +22,8 @@ pub struct DescribeVpcsResult {
     #[serde(rename = "TotalCount")]
     pub total_count: Option<u64>,
     #[serde(rename = "VpcSet")]
-    pub vpc_set: Option<Vec<VpcSummary>>,
+    #[serde(default)]
+    pub vpc_set: Vec<VpcSummary>,
     #[serde(rename = "RequestId")]
     pub request_id: String,
 }
@@ -41,7 +42,13 @@ pub struct VpcSummary {
     pub enable_multicast: Option<bool>,
     #[serde(rename = "TagSet")]
     pub tag_set: Option<Vec<ResourceTag>>,
-    #[serde(flatten)]
+    #[serde(rename = "CreatedTime")]
+    pub created_time: Option<String>,
+    #[serde(rename = "VpcIdString")]
+    pub vpc_id_string: Option<String>,
+    #[serde(default)]
+    pub ipv6_cidr_block: Option<String>,
+    #[serde(flatten, default)]
     pub extra: HashMap<String, Value>,
 }
 
@@ -73,6 +80,50 @@ pub struct DescribeVpcs<'a> {
     pub vpc_ids: Option<Vec<&'a str>>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
+}
+
+impl<'a> Default for DescribeVpcs<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> DescribeVpcs<'a> {
+    /// Construct an empty request builder.
+    pub fn new() -> Self {
+        Self {
+            region: None,
+            filters: None,
+            vpc_ids: None,
+            limit: None,
+            offset: None,
+        }
+    }
+
+    pub fn with_region(mut self, region: &'a str) -> Self {
+        self.region = Some(region);
+        self
+    }
+
+    pub fn push_filter(mut self, filter: Filter<'a>) -> Self {
+        self.filters.get_or_insert_with(Vec::new).push(filter);
+        self
+    }
+
+    pub fn push_vpc_id(mut self, vpc_id: &'a str) -> Self {
+        self.vpc_ids.get_or_insert_with(Vec::new).push(vpc_id);
+        self
+    }
+
+    pub fn with_limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn with_offset(mut self, offset: u32) -> Self {
+        self.offset = Some(offset);
+        self
+    }
 }
 
 impl<'a> Endpoint for DescribeVpcs<'a> {
@@ -143,6 +194,45 @@ pub struct CreateVpc<'a> {
     pub dns_servers: Option<Vec<&'a str>>,
     pub domain_name: Option<&'a str>,
     pub tags: Option<Vec<Tag<'a>>>,
+}
+
+impl<'a> CreateVpc<'a> {
+    pub fn new(vpc_name: &'a str, cidr_block: &'a str) -> Self {
+        Self {
+            region: None,
+            vpc_name,
+            cidr_block,
+            enable_multicast: None,
+            dns_servers: None,
+            domain_name: None,
+            tags: None,
+        }
+    }
+
+    pub fn with_region(mut self, region: &'a str) -> Self {
+        self.region = Some(region);
+        self
+    }
+
+    pub fn enable_multicast(mut self, enable: bool) -> Self {
+        self.enable_multicast = Some(enable);
+        self
+    }
+
+    pub fn with_dns_servers(mut self, servers: Vec<&'a str>) -> Self {
+        self.dns_servers = Some(servers);
+        self
+    }
+
+    pub fn with_domain_name(mut self, domain: &'a str) -> Self {
+        self.domain_name = Some(domain);
+        self
+    }
+
+    pub fn push_tag(mut self, tag: Tag<'a>) -> Self {
+        self.tags.get_or_insert_with(Vec::new).push(tag);
+        self
+    }
 }
 
 impl<'a> Endpoint for CreateVpc<'a> {
@@ -231,6 +321,35 @@ pub struct CreateSubnet<'a> {
     pub tags: Option<Vec<Tag<'a>>>,
 }
 
+impl<'a> CreateSubnet<'a> {
+    pub fn new(vpc_id: &'a str, subnet_name: &'a str, cidr_block: &'a str, zone: &'a str) -> Self {
+        Self {
+            region: None,
+            vpc_id,
+            subnet_name,
+            cidr_block,
+            zone,
+            is_default: None,
+            tags: None,
+        }
+    }
+
+    pub fn with_region(mut self, region: &'a str) -> Self {
+        self.region = Some(region);
+        self
+    }
+
+    pub fn mark_default(mut self, value: bool) -> Self {
+        self.is_default = Some(value);
+        self
+    }
+
+    pub fn push_tag(mut self, tag: Tag<'a>) -> Self {
+        self.tags.get_or_insert_with(Vec::new).push(tag);
+        self
+    }
+}
+
 impl<'a> Endpoint for CreateSubnet<'a> {
     type Output = CreateSubnetResponse;
 
@@ -274,7 +393,8 @@ pub struct DescribeSubnetsResult {
     #[serde(rename = "TotalCount")]
     pub total_count: Option<u64>,
     #[serde(rename = "SubnetSet")]
-    pub subnet_set: Option<Vec<SubnetSummary>>,
+    #[serde(default)]
+    pub subnet_set: Vec<SubnetSummary>,
     #[serde(rename = "RequestId")]
     pub request_id: String,
 }
@@ -302,6 +422,55 @@ pub struct DescribeSubnets<'a> {
     pub vpc_id: Option<&'a str>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
+}
+
+impl<'a> Default for DescribeSubnets<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> DescribeSubnets<'a> {
+    pub fn new() -> Self {
+        Self {
+            region: None,
+            filters: None,
+            subnet_ids: None,
+            vpc_id: None,
+            limit: None,
+            offset: None,
+        }
+    }
+
+    pub fn with_region(mut self, region: &'a str) -> Self {
+        self.region = Some(region);
+        self
+    }
+
+    pub fn push_filter(mut self, filter: Filter<'a>) -> Self {
+        self.filters.get_or_insert_with(Vec::new).push(filter);
+        self
+    }
+
+    pub fn push_subnet_id(mut self, subnet_id: &'a str) -> Self {
+        self.subnet_ids.get_or_insert_with(Vec::new).push(subnet_id);
+        self
+    }
+
+    pub fn with_vpc_id(mut self, vpc_id: &'a str) -> Self {
+        self.vpc_id = Some(vpc_id);
+        self
+    }
+
+    pub fn with_limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn with_offset(mut self, offset: u32) -> Self {
+        self.offset = Some(offset);
+        self
+    }
 }
 
 impl<'a> Endpoint for DescribeSubnets<'a> {
@@ -402,6 +571,7 @@ pub fn describe_subnets_blocking(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::Filter;
 
     #[test]
     fn describe_vpcs_payload_contains_ids_and_filters() {
@@ -474,6 +644,22 @@ mod tests {
     }
 
     #[test]
+    fn describe_vpcs_builder_accumulates_filters() {
+        let request = DescribeVpcs::new()
+            .with_region("ap-beijing")
+            .push_filter(Filter::new("vpc-name", ["prod"]))
+            .push_vpc_id("vpc-123")
+            .with_limit(30);
+
+        assert_eq!(request.region, Some("ap-beijing"));
+        assert_eq!(request.limit, Some(30));
+        let filters = request.filters.as_ref().expect("filters set");
+        assert_eq!(filters[0].name, "vpc-name");
+        assert_eq!(filters[0].values[0], "prod");
+        assert_eq!(request.vpc_ids.as_ref().unwrap()[0], "vpc-123");
+    }
+
+    #[test]
     fn deserialize_create_vpc_response() {
         let payload = r#"{
             "Response": {
@@ -519,5 +705,20 @@ mod tests {
         let payload = request.payload();
         assert_eq!(payload["SubnetIds"], serde_json::json!(["subnet-aaa"]));
         assert_eq!(payload["VpcId"], serde_json::json!("vpc-zzz"));
+    }
+
+    #[test]
+    fn describe_subnets_builder_eases_filters() {
+        let request = DescribeSubnets::new()
+            .with_region("ap-hongkong")
+            .push_filter(Filter::new("subnet-name", ["blue"]))
+            .push_subnet_id("subnet-aaa")
+            .with_vpc_id("vpc-zzz");
+
+        assert_eq!(request.region, Some("ap-hongkong"));
+        let filters = request.filters.as_ref().expect("filters set");
+        assert_eq!(filters[0].name, "subnet-name");
+        assert_eq!(request.subnet_ids.as_ref().unwrap()[0], "subnet-aaa");
+        assert_eq!(request.vpc_id, Some("vpc-zzz"));
     }
 }
