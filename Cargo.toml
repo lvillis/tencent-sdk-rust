@@ -13,9 +13,13 @@ exclude = [
     "/tests/",
     "/.config/",
     "/.github/",
+    "/.idea/",
+    "/target/",
     "/.justfile",
     "/rust-toolchain.toml",
     "/.gitignore",
+    "AGENTS.md",
+    "CONTEXT.md"
 ]
 
 [dependencies]
