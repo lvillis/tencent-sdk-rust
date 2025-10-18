@@ -1,5 +1,4 @@
 use serde_json::{json, Value};
-use std::thread;
 use tencent_sdk::{
     client::{TencentCloudAsync, TencentCloudBlocking},
     core::{Endpoint, TencentCloudError},
@@ -112,42 +111,34 @@ async fn async_client_surfaces_error_status() {
     }
 }
 
-#[cfg_attr(
-    target_os = "windows",
-    ignore = "tokio runtime drop restriction on Windows"
-)]
-#[test]
-fn blocking_client_handles_success_response() {
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .expect("build test runtime");
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn blocking_client_handles_success_response() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(header("X-TC-Action", "DescribeMock"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Response": {
+                "Message": "blocking"
+            }
+        })))
+        .mount(&server)
+        .await;
 
-    rt.block_on(async {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/"))
-            .and(header("X-TC-Action", "DescribeMock"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "Response": {
-                    "Message": "blocking"
-                }
-            })))
-            .mount(&server)
-            .await;
+    let endpoint = MockDescribeEndpoint::new(&server, json!({"Hello": "World"}));
 
+    let response = tokio::task::spawn_blocking(move || {
         let client = TencentCloudBlocking::builder("secret", "key")
             .expect("build blocking client builder")
             .no_system_proxy()
             .build()
             .expect("build blocking client");
-        let endpoint = MockDescribeEndpoint::new(&server, json!({"Hello": "World"}));
 
-        let response = thread::spawn(move || client.request(&endpoint))
-            .join()
-            .expect("join blocking thread")
-            .expect("blocking request succeeds");
+        client.request(&endpoint)
+    })
+    .await
+    .expect("join blocking thread")
+    .expect("blocking request succeeds");
 
-        assert_eq!(response["Response"]["Message"], "blocking");
-    });
+    assert_eq!(response["Response"]["Message"], "blocking");
 }
