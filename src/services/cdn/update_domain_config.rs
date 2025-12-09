@@ -68,8 +68,7 @@ impl<'a> Endpoint for UpdateDomainConfig<'a> {
     }
 
     fn payload(&self) -> Value {
-        let payload = serde_json::to_value(&self).unwrap();
-        payload
+        serde_json::to_value(&self).unwrap()
     }
 }
 
