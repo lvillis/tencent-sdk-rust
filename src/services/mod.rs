@@ -1,4 +1,5 @@
 pub mod billing;
+pub mod cdn;
 pub mod common;
 pub mod cvm;
 pub mod dns;
