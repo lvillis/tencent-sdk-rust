@@ -1,4 +1,7 @@
-use crate::core::Endpoint;
+use crate::{
+    client::{TencentCloudAsync, TencentCloudBlocking},
+    core::{Endpoint, TencentCloudResult},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -63,13 +66,29 @@ impl<'a> Endpoint for UpdateDomainConfig<'a> {
     }
 
     fn region(&self) -> Option<Cow<'_, str>> {
-        // DNS 接口通常不需要 region 参数
+        // CDN UpdateDomainConfig does not require a region parameter
         None
     }
 
     fn payload(&self) -> Value {
-        serde_json::to_value(&self).unwrap()
+        serde_json::to_value(self).expect("serialize UpdateDomainConfig payload")
     }
+}
+
+/// Call CDN `UpdateDomainConfig` with the async client.
+pub async fn update_domain_config_async(
+    client: &TencentCloudAsync,
+    request: &UpdateDomainConfig<'_>,
+) -> TencentCloudResult<UpdateDomainConfigResponse> {
+    client.request(request).await
+}
+
+/// Call CDN `UpdateDomainConfig` with the blocking client.
+pub fn update_domain_config_blocking(
+    client: &TencentCloudBlocking,
+    request: &UpdateDomainConfig<'_>,
+) -> TencentCloudResult<UpdateDomainConfigResponse> {
+    client.request(request)
 }
 
 #[cfg(test)]

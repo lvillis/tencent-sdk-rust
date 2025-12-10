@@ -264,6 +264,138 @@ impl<'a> Endpoint for DescribeInstanceVncUrl<'a> {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RunInstancesResponse {
+    #[serde(rename = "Response")]
+    pub response: RunInstancesResult,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RunInstancesResult {
+    #[serde(rename = "InstanceIdSet")]
+    pub instance_id_set: Option<Vec<String>>,
+    #[serde(rename = "RequestId")]
+    pub request_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct RunInstancesPayload<'a> {
+    image_id: &'a str,
+    instance_type: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instance_name: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instance_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_token: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    subnet_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vpc_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    security_group_ids: Option<&'a [&'a str]>,
+}
+
+/// Request payload for `RunInstances`.
+pub struct RunInstances<'a> {
+    pub region: &'a str,
+    pub image_id: &'a str,
+    pub instance_type: &'a str,
+    pub instance_name: Option<&'a str>,
+    pub instance_count: Option<u32>,
+    pub client_token: Option<&'a str>,
+    pub subnet_id: Option<&'a str>,
+    pub vpc_id: Option<&'a str>,
+    pub security_group_ids: Option<Vec<&'a str>>,
+}
+
+impl<'a> RunInstances<'a> {
+    pub fn new(region: &'a str, image_id: &'a str, instance_type: &'a str) -> Self {
+        Self {
+            region,
+            image_id,
+            instance_type,
+            instance_name: None,
+            instance_count: None,
+            client_token: None,
+            subnet_id: None,
+            vpc_id: None,
+            security_group_ids: None,
+        }
+    }
+
+    pub fn with_instance_name(mut self, name: &'a str) -> Self {
+        self.instance_name = Some(name);
+        self
+    }
+
+    pub fn with_instance_count(mut self, count: u32) -> Self {
+        self.instance_count = Some(count);
+        self
+    }
+
+    pub fn with_client_token(mut self, token: &'a str) -> Self {
+        self.client_token = Some(token);
+        self
+    }
+
+    pub fn with_subnet(mut self, subnet_id: &'a str) -> Self {
+        self.subnet_id = Some(subnet_id);
+        self
+    }
+
+    pub fn with_vpc(mut self, vpc_id: &'a str) -> Self {
+        self.vpc_id = Some(vpc_id);
+        self
+    }
+
+    pub fn with_security_groups<I>(mut self, groups: I) -> Self
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        self.security_group_ids = Some(groups.into_iter().collect());
+        self
+    }
+}
+
+impl<'a> Endpoint for RunInstances<'a> {
+    type Output = RunInstancesResponse;
+
+    fn service(&self) -> Cow<'static, str> {
+        Cow::Borrowed("cvm")
+    }
+
+    fn action(&self) -> Cow<'static, str> {
+        Cow::Borrowed("RunInstances")
+    }
+
+    fn version(&self) -> Cow<'static, str> {
+        Cow::Borrowed("2017-03-12")
+    }
+
+    fn region(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed(self.region))
+    }
+
+    fn payload(&self) -> Value {
+        let security_group_ids = self.security_group_ids.as_ref().map(|ids| ids.to_vec());
+
+        let payload = RunInstancesPayload {
+            image_id: self.image_id,
+            instance_type: self.instance_type,
+            instance_name: self.instance_name,
+            instance_count: self.instance_count,
+            client_token: self.client_token,
+            subnet_id: self.subnet_id,
+            vpc_id: self.vpc_id,
+            security_group_ids: security_group_ids.as_deref(),
+        };
+
+        serde_json::to_value(payload).expect("serialize RunInstances payload")
+    }
+}
+
 /// Request payload for `StartInstances`.
 pub struct StartInstances<'a> {
     pub region: &'a str,
@@ -398,6 +530,167 @@ impl<'a> Endpoint for ModifyInstancesProject<'a> {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct TerminateInstancesResponse {
+    #[serde(rename = "Response")]
+    pub response: GenericActionResult,
+}
+
+/// Request payload for `TerminateInstances`.
+pub struct TerminateInstances<'a> {
+    pub region: &'a str,
+    pub instance_ids: &'a [&'a str],
+}
+
+impl<'a> Endpoint for TerminateInstances<'a> {
+    type Output = TerminateInstancesResponse;
+
+    fn service(&self) -> Cow<'static, str> {
+        Cow::Borrowed("cvm")
+    }
+
+    fn action(&self) -> Cow<'static, str> {
+        Cow::Borrowed("TerminateInstances")
+    }
+
+    fn version(&self) -> Cow<'static, str> {
+        Cow::Borrowed("2017-03-12")
+    }
+
+    fn region(&self) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed(self.region))
+    }
+
+    fn payload(&self) -> Value {
+        json!({ "InstanceIds": self.instance_ids })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DescribeImagesResponse {
+    #[serde(rename = "Response")]
+    pub response: DescribeImagesResult,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DescribeImagesResult {
+    #[serde(rename = "TotalCount")]
+    pub total_count: Option<u64>,
+    #[serde(rename = "ImageSet")]
+    pub image_set: Vec<ImageSummary>,
+    #[serde(rename = "RequestId")]
+    pub request_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImageSummary {
+    #[serde(rename = "ImageId")]
+    pub image_id: Option<String>,
+    #[serde(rename = "ImageName")]
+    pub image_name: Option<String>,
+    #[serde(rename = "ImageType")]
+    pub image_type: Option<String>,
+    #[serde(rename = "CreatedTime")]
+    pub created_time: Option<String>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, Value>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct DescribeImagesPayload<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    image_ids: Option<&'a [&'a str]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filters: Option<&'a [Filter<'a>]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    offset: Option<u32>,
+}
+
+pub struct DescribeImages<'a> {
+    pub region: Option<&'a str>,
+    pub image_ids: Option<Vec<&'a str>>,
+    pub filters: Option<Vec<Filter<'a>>>,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+}
+
+impl<'a> Default for DescribeImages<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> DescribeImages<'a> {
+    pub fn new() -> Self {
+        Self {
+            region: None,
+            image_ids: None,
+            filters: None,
+            limit: None,
+            offset: None,
+        }
+    }
+
+    pub fn with_region(mut self, region: &'a str) -> Self {
+        self.region = Some(region);
+        self
+    }
+
+    pub fn push_image_id(mut self, id: &'a str) -> Self {
+        self.image_ids.get_or_insert_with(Vec::new).push(id);
+        self
+    }
+
+    pub fn push_filter(mut self, filter: Filter<'a>) -> Self {
+        self.filters.get_or_insert_with(Vec::new).push(filter);
+        self
+    }
+
+    pub fn with_limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn with_offset(mut self, offset: u32) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+}
+
+impl<'a> Endpoint for DescribeImages<'a> {
+    type Output = DescribeImagesResponse;
+
+    fn service(&self) -> Cow<'static, str> {
+        Cow::Borrowed("cvm")
+    }
+
+    fn action(&self) -> Cow<'static, str> {
+        Cow::Borrowed("DescribeImages")
+    }
+
+    fn version(&self) -> Cow<'static, str> {
+        Cow::Borrowed("2017-03-12")
+    }
+
+    fn region(&self) -> Option<Cow<'_, str>> {
+        self.region.map(Cow::Borrowed)
+    }
+
+    fn payload(&self) -> Value {
+        let payload = DescribeImagesPayload {
+            image_ids: self.image_ids.as_deref(),
+            filters: self.filters.as_deref(),
+            limit: self.limit,
+            offset: self.offset,
+        };
+
+        serde_json::to_value(payload).expect("serialize DescribeImages payload")
+    }
+}
+
 /// Invoke `DescribeInstances` asynchronously.
 pub async fn describe_instances_async(
     client: &TencentCloudAsync,
@@ -510,6 +803,54 @@ pub fn modify_instances_project_blocking(
     client.request(request)
 }
 
+/// Run new CVM instances asynchronously.
+pub async fn run_instances_async(
+    client: &TencentCloudAsync,
+    request: &RunInstances<'_>,
+) -> TencentCloudResult<RunInstancesResponse> {
+    client.request(request).await
+}
+
+/// Run new CVM instances with the blocking client.
+pub fn run_instances_blocking(
+    client: &TencentCloudBlocking,
+    request: &RunInstances<'_>,
+) -> TencentCloudResult<RunInstancesResponse> {
+    client.request(request)
+}
+
+/// Terminate CVM instances asynchronously.
+pub async fn terminate_instances_async(
+    client: &TencentCloudAsync,
+    request: &TerminateInstances<'_>,
+) -> TencentCloudResult<TerminateInstancesResponse> {
+    client.request(request).await
+}
+
+/// Terminate CVM instances with the blocking client.
+pub fn terminate_instances_blocking(
+    client: &TencentCloudBlocking,
+    request: &TerminateInstances<'_>,
+) -> TencentCloudResult<TerminateInstancesResponse> {
+    client.request(request)
+}
+
+/// Describe machine images asynchronously.
+pub async fn describe_images_async(
+    client: &TencentCloudAsync,
+    request: &DescribeImages<'_>,
+) -> TencentCloudResult<DescribeImagesResponse> {
+    client.request(request).await
+}
+
+/// Describe machine images with the blocking client.
+pub fn describe_images_blocking(
+    client: &TencentCloudBlocking,
+    request: &DescribeImages<'_>,
+) -> TencentCloudResult<DescribeImagesResponse> {
+    client.request(request)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -576,5 +917,76 @@ mod tests {
         assert_eq!(filters[0].values[0], "ap-guangzhou-1");
         assert_eq!(request.limit, Some(10));
         assert_eq!(request.offset, Some(5));
+    }
+
+    #[test]
+    fn run_instances_payload_includes_optional_fields() {
+        let request = RunInstances::new("ap-beijing", "img-123", "S4.SMALL1")
+            .with_instance_name("demo")
+            .with_instance_count(2)
+            .with_client_token("token")
+            .with_subnet("subnet-123")
+            .with_security_groups(["sg-1", "sg-2"]);
+
+        let payload = request.payload();
+        assert_eq!(payload["ImageId"], json!("img-123"));
+        assert_eq!(payload["InstanceType"], json!("S4.SMALL1"));
+        assert_eq!(payload["InstanceName"], json!("demo"));
+        assert_eq!(payload["InstanceCount"], json!(2));
+        assert_eq!(payload["ClientToken"], json!("token"));
+        assert_eq!(payload["SubnetId"], json!("subnet-123"));
+        assert_eq!(payload["SecurityGroupIds"], json!(["sg-1", "sg-2"]));
+    }
+
+    #[test]
+    fn describe_images_payload_supports_filters() {
+        let request = DescribeImages::new()
+            .with_region("ap-beijing")
+            .push_image_id("img-123")
+            .push_filter(Filter::new("image-type", ["PUBLIC_IMAGE"]))
+            .with_limit(10);
+
+        let payload = request.payload();
+        assert_eq!(payload["ImageIds"], json!(["img-123"]));
+        assert_eq!(
+            payload["Filters"],
+            json!([{ "Name": "image-type", "Values": ["PUBLIC_IMAGE"] }])
+        );
+        assert_eq!(payload["Limit"], json!(10));
+    }
+
+    #[test]
+    fn deserialize_run_instances_response() {
+        let payload = r#"{
+            "Response": {
+                "InstanceIdSet": ["ins-1", "ins-2"],
+                "RequestId": "req-789"
+            }
+        }"#;
+        let parsed: RunInstancesResponse = serde_json::from_str(payload).unwrap();
+        assert_eq!(
+            parsed.response.instance_id_set.unwrap(),
+            vec!["ins-1".to_string(), "ins-2".to_string()]
+        );
+    }
+
+    #[test]
+    fn deserialize_describe_images_response() {
+        let payload = r#"{
+            "Response": {
+                "TotalCount": 1,
+                "ImageSet": [{
+                    "ImageId": "img-1",
+                    "ImageName": "test"
+                }],
+                "RequestId": "req-111"
+            }
+        }"#;
+        let parsed: DescribeImagesResponse = serde_json::from_str(payload).unwrap();
+        assert_eq!(parsed.response.total_count, Some(1));
+        assert_eq!(
+            parsed.response.image_set[0].image_id.as_deref(),
+            Some("img-1")
+        );
     }
 }

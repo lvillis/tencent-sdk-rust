@@ -1,4 +1,7 @@
-use crate::core::Endpoint;
+use crate::{
+    client::{TencentCloudAsync, TencentCloudBlocking},
+    core::{Endpoint, TencentCloudResult},
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::borrow::Cow;
@@ -15,7 +18,7 @@ pub struct DeleteRecordResult {
     pub request_id: String,
 }
 
-/// 请求参数结构体 - 删除记录
+/// Request parameters for deleting a record.
 pub struct DeleteRecord<'a> {
     pub domain: &'a str,
     pub record_id: u64,
@@ -70,6 +73,22 @@ impl<'a> Endpoint for DeleteRecord<'a> {
     }
 }
 
+/// Call DNSPod `DeleteRecord` with the async client.
+pub async fn delete_record_async(
+    client: &TencentCloudAsync,
+    request: &DeleteRecord<'_>,
+) -> TencentCloudResult<DeleteRecordResponse> {
+    client.request(request).await
+}
+
+/// Call DNSPod `DeleteRecord` with the blocking client.
+pub fn delete_record_blocking(
+    client: &TencentCloudBlocking,
+    request: &DeleteRecord<'_>,
+) -> TencentCloudResult<DeleteRecordResponse> {
+    client.request(request)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,7 +111,8 @@ mod tests {
             }
         }"#;
 
-        let response: DeleteRecordResponse = serde_json::from_str(json).unwrap();
+        let response: DeleteRecordResponse =
+            serde_json::from_str(json).expect("deserialize DeleteRecordResponse");
         assert_eq!(response.response.request_id, "req-789012");
     }
 

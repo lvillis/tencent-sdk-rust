@@ -97,6 +97,39 @@ fn fetch_balance() -> tencent_sdk::core::TencentCloudResult<()> {
 }
 ```
 
+### CDN / DNSPod / SSL quickstarts
+
+```rust
+use tencent_sdk::{
+    client::TencentCloudAsync,
+    core::TencentCloudResult,
+    services::{
+        cdn::{update_domain_config_async, UpdateDomainConfig},
+        dns::{create_txt_record_async, CreateTXTRecord},
+        ssl::{upload_certificate_async, UploadCertificate},
+    },
+};
+
+async fn issue_cert_and_bind() -> TencentCloudResult<()> {
+    let client = TencentCloudAsync::builder("secret_id", "secret_key")?.build()?;
+
+    // Add the `_acme-challenge` TXT record
+    let dns_req =
+        CreateTXTRecord::new("example.com", "_acme-challenge", "默认", "txt-value").with_ttl(600);
+    create_txt_record_async(&client, &dns_req).await?;
+
+    // Upload the certificate
+    let upload_req = UploadCertificate::new("-----BEGIN CERTIFICATE-----...").with_certificate_type("SVR");
+    upload_certificate_async(&client, &upload_req).await?;
+
+    // Bind the certificate to CDN domain
+    let cdn_req = UpdateDomainConfig::new("example.com", "cert-id-123");
+    update_domain_config_async(&client, &cdn_req).await?;
+
+    Ok(())
+}
+```
+
 ## Features
 
 - **Asynchronous & Blocking Clients**: Tokio-powered async client plus a reqwest blocking client sharing configuration and retry middleware.
@@ -115,9 +148,26 @@ fn fetch_balance() -> tencent_sdk::core::TencentCloudResult<()> {
     - [x] RebootInstances
     - [x] StopInstances
     - [x] ModifyInstancesProject
+    - [x] RunInstances
+    - [x] TerminateInstances
+    - [x] DescribeImages
 
 - **Tag Module**
     - [x] DescribeProjects
 
 - **Billing Module**
     - [x] DescribeAccountBalance
+
+- **CDN Module**
+    - [x] UpdateDomainConfig (HTTPS 证书切换)
+
+- **DNSPod Module**
+    - [x] CreateRecord (TXT)
+    - [x] ModifyRecord (TXT)
+    - [x] DeleteRecord
+
+- **SSL Module**
+    - [x] ApplyCertificate
+    - [x] DescribeCertificate
+    - [x] DownloadCertificate
+    - [x] UploadCertificate

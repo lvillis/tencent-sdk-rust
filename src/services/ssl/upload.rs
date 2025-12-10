@@ -1,4 +1,7 @@
-use crate::core::Endpoint;
+use crate::{
+    client::{TencentCloudAsync, TencentCloudBlocking},
+    core::{Endpoint, TencentCloudResult},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -19,73 +22,74 @@ pub struct UploadCertificateResult {
     pub request_id: String,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "PascalCase")]
-struct UploadCertificatePayload<'a> {
-    certificate_public_key: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    certificate_private_key: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    certificate_type: Option<CertificateType<'a>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    alias: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    project_id: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    certificate_use: Option<CertificateUse<'a>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tags: Option<&'a [Tag<'a>]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    repeatable: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    key_password: Option<&'a str>,
-}
-
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "UPPERCASE")]
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(untagged)]
 pub enum CertificateType<'a> {
     #[serde(rename = "CA")]
-    CA,
+    Ca,
     #[serde(rename = "SVR")]
-    SVR,
+    Svr,
     Custom(&'a str),
 }
 
 impl<'a> From<&'a str> for CertificateType<'a> {
     fn from(s: &'a str) -> Self {
         match s.to_uppercase().as_str() {
-            "CA" => CertificateType::CA,
-            "SVR" => CertificateType::SVR,
+            "CA" => CertificateType::Ca,
+            "SVR" => CertificateType::Svr,
             _ => CertificateType::Custom(s),
         }
     }
 }
 
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "UPPERCASE")]
+impl<'a> CertificateType<'a> {
+    pub fn as_str(&self) -> &str {
+        match self {
+            CertificateType::Ca => "CA",
+            CertificateType::Svr => "SVR",
+            CertificateType::Custom(value) => value,
+        }
+    }
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(untagged)]
 pub enum CertificateUse<'a> {
     #[serde(rename = "CLB")]
-    CLB,
+    Clb,
     #[serde(rename = "CDN")]
-    CDN,
+    Cdn,
     #[serde(rename = "WAF")]
-    WAF,
+    Waf,
     #[serde(rename = "LIVE")]
-    LIVE,
+    Live,
     #[serde(rename = "DDOS")]
-    DDOS,
+    Ddos,
     Custom(&'a str),
 }
 
 impl<'a> From<&'a str> for CertificateUse<'a> {
     fn from(s: &'a str) -> Self {
         match s.to_uppercase().as_str() {
-            "CLB" => CertificateUse::CLB,
-            "CDN" => CertificateUse::CDN,
-            "WAF" => CertificateUse::WAF,
-            "LIVE" => CertificateUse::LIVE,
-            "DDOS" => CertificateUse::DDOS,
+            "CLB" => CertificateUse::Clb,
+            "CDN" => CertificateUse::Cdn,
+            "WAF" => CertificateUse::Waf,
+            "LIVE" => CertificateUse::Live,
+            "DDOS" => CertificateUse::Ddos,
             _ => CertificateUse::Custom(s),
+        }
+    }
+}
+
+impl<'a> CertificateUse<'a> {
+    pub fn as_str(&self) -> &str {
+        match self {
+            CertificateUse::Clb => "CLB",
+            CertificateUse::Cdn => "CDN",
+            CertificateUse::Waf => "WAF",
+            CertificateUse::Live => "LIVE",
+            CertificateUse::Ddos => "DDOS",
+            CertificateUse::Custom(value) => value,
         }
     }
 }
@@ -159,7 +163,7 @@ impl<'a> UploadCertificate<'a> {
         self
     }
 
-    /// Set the certificate use/来源 (CLB, CDN, WAF, LIVE, DDOS).
+    /// Set the certificate use/source (CLB, CDN, WAF, LIVE, DDOS).
     pub fn with_certificate_use(mut self, cert_use: &'a str) -> Self {
         self.certificate_use = Some(cert_use.into());
         self
@@ -205,21 +209,53 @@ impl<'a> Endpoint for UploadCertificate<'a> {
     }
 
     fn payload(&self) -> Value {
-        let tags = self.tags.as_deref();
-        let payload = UploadCertificatePayload {
-            certificate_public_key: self.certificate_public_key,
-            certificate_private_key: self.certificate_private_key,
-            certificate_type: self.certificate_type.clone(),
-            alias: self.alias,
-            project_id: self.project_id,
-            certificate_use: self.certificate_use.clone(),
-            tags,
-            repeatable: self.repeatable,
-            key_password: self.key_password,
-        };
+        let mut payload = serde_json::json!({
+            "CertificatePublicKey": self.certificate_public_key,
+        });
 
-        serde_json::to_value(payload).expect("serialize UploadCertificate payload")
+        if let Some(private_key) = self.certificate_private_key {
+            payload["CertificatePrivateKey"] = serde_json::json!(private_key);
+        }
+        if let Some(cert_type) = &self.certificate_type {
+            payload["CertificateType"] = serde_json::json!(cert_type.as_str());
+        }
+        if let Some(alias) = self.alias {
+            payload["Alias"] = serde_json::json!(alias);
+        }
+        if let Some(project_id) = self.project_id {
+            payload["ProjectId"] = serde_json::json!(project_id);
+        }
+        if let Some(cert_use) = &self.certificate_use {
+            payload["CertificateUse"] = serde_json::json!(cert_use.as_str());
+        }
+        if let Some(tags) = &self.tags {
+            payload["Tags"] = serde_json::json!(tags);
+        }
+        if let Some(repeatable) = self.repeatable {
+            payload["Repeatable"] = serde_json::json!(repeatable);
+        }
+        if let Some(key_password) = self.key_password {
+            payload["KeyPassword"] = serde_json::json!(key_password);
+        }
+
+        payload
     }
+}
+
+/// Upload a certificate with the async client.
+pub async fn upload_certificate_async(
+    client: &TencentCloudAsync,
+    request: &UploadCertificate<'_>,
+) -> TencentCloudResult<UploadCertificateResponse> {
+    client.request(request).await
+}
+
+/// Upload a certificate with the blocking client.
+pub fn upload_certificate_blocking(
+    client: &TencentCloudBlocking,
+    request: &UploadCertificate<'_>,
+) -> TencentCloudResult<UploadCertificateResponse> {
+    client.request(request)
 }
 
 #[cfg(test)]
@@ -245,11 +281,11 @@ mod tests {
 
         assert!(payload["CertificatePublicKey"]
             .as_str()
-            .unwrap()
+            .expect("certificate public key should be string")
             .contains("BEGIN CERTIFICATE"));
         assert!(payload["CertificatePrivateKey"]
             .as_str()
-            .unwrap()
+            .expect("certificate private key should be string")
             .contains("BEGIN RSA PRIVATE KEY"));
         assert_eq!(payload["CertificateType"], json!("SVR"));
         assert_eq!(payload["Alias"], json!("my-website-cert"));
@@ -271,12 +307,12 @@ mod tests {
 
         assert!(payload["CertificatePublicKey"]
             .as_str()
-            .unwrap()
+            .expect("certificate public key should be string")
             .contains("CA_CERT"));
         assert_eq!(payload["CertificateType"], json!("CA"));
         assert_eq!(payload["Alias"], json!("root-ca"));
         assert_eq!(payload["Repeatable"], json!(true));
-        // CA证书不应该有私钥
+        // CA certificates should not include a private key
         assert!(payload.get("CertificatePrivateKey").is_none());
     }
 
@@ -291,14 +327,14 @@ mod tests {
 
         let payload = request.payload();
 
-        let tags = payload["Tags"].as_array().unwrap();
+        let tags = payload["Tags"].as_array().expect("Tags should be an array");
         assert_eq!(tags.len(), 3);
 
-        // 检查第一个标签
+        // First tag
         assert_eq!(tags[0]["TagKey"], json!("environment"));
         assert_eq!(tags[0]["TagValue"], json!("production"));
 
-        // 检查第二个标签
+        // Second tag
         assert_eq!(tags[1]["TagKey"], json!("application"));
         assert_eq!(tags[1]["TagValue"], json!("web-server"));
     }
@@ -313,7 +349,8 @@ mod tests {
             }
         }"#;
 
-        let parsed: UploadCertificateResponse = serde_json::from_str(payload).unwrap();
+        let parsed: UploadCertificateResponse =
+            serde_json::from_str(payload).expect("deserialize UploadCertificateResponse");
 
         assert_eq!(
             parsed.response.certificate_id.as_deref(),
@@ -335,7 +372,8 @@ mod tests {
             }
         }"#;
 
-        let parsed: UploadCertificateResponse = serde_json::from_str(payload).unwrap();
+        let parsed: UploadCertificateResponse =
+            serde_json::from_str(payload).expect("deserialize UploadCertificateResponse");
 
         assert_eq!(
             parsed.response.certificate_id.as_deref(),
@@ -351,8 +389,8 @@ mod tests {
         let svr: CertificateType = "SVR".into();
         let custom: CertificateType = "CUSTOM_TYPE".into();
 
-        assert!(matches!(ca, CertificateType::CA));
-        assert!(matches!(svr, CertificateType::SVR));
+        assert!(matches!(ca, CertificateType::Ca));
+        assert!(matches!(svr, CertificateType::Svr));
         assert!(matches!(custom, CertificateType::Custom("CUSTOM_TYPE")));
     }
 
@@ -364,13 +402,27 @@ mod tests {
             let cert_use: CertificateUse = use_str.into();
 
             match use_str {
-                "CLB" => assert!(matches!(cert_use, CertificateUse::CLB)),
-                "CDN" => assert!(matches!(cert_use, CertificateUse::CDN)),
-                "WAF" => assert!(matches!(cert_use, CertificateUse::WAF)),
-                "LIVE" => assert!(matches!(cert_use, CertificateUse::LIVE)),
-                "DDOS" => assert!(matches!(cert_use, CertificateUse::DDOS)),
+                "CLB" => assert!(matches!(cert_use, CertificateUse::Clb)),
+                "CDN" => assert!(matches!(cert_use, CertificateUse::Cdn)),
+                "WAF" => assert!(matches!(cert_use, CertificateUse::Waf)),
+                "LIVE" => assert!(matches!(cert_use, CertificateUse::Live)),
+                "DDOS" => assert!(matches!(cert_use, CertificateUse::Ddos)),
                 _ => assert!(matches!(cert_use, CertificateUse::Custom("CUSTOM"))),
             }
         }
+    }
+
+    #[test]
+    fn certificate_enums_serialize_as_bare_strings() {
+        let custom_type: CertificateType = "any-type".into();
+        let custom_use: CertificateUse = "custom-use".into();
+
+        let payload = serde_json::json!({
+            "CertificateType": custom_type,
+            "CertificateUse": custom_use
+        });
+
+        assert_eq!(payload["CertificateType"], json!("any-type"));
+        assert_eq!(payload["CertificateUse"], json!("custom-use"));
     }
 }

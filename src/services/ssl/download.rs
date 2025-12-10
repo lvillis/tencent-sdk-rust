@@ -1,4 +1,7 @@
-use crate::core::Endpoint;
+use crate::{
+    client::{TencentCloudAsync, TencentCloudBlocking},
+    core::{Endpoint, TencentCloudResult},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -53,7 +56,7 @@ impl<'a> Endpoint for DownloadCertificate<'a> {
     }
 
     fn region(&self) -> Option<Cow<'_, str>> {
-        // SSL接口不需要region参数
+        // SSL APIs do not require a region parameter
         None
     }
 
@@ -63,6 +66,22 @@ impl<'a> Endpoint for DownloadCertificate<'a> {
         })
         .expect("serialize DownloadCertificate payload")
     }
+}
+
+/// Call SSL `DownloadCertificate` with the async client.
+pub async fn download_certificate_async(
+    client: &TencentCloudAsync,
+    request: &DownloadCertificate<'_>,
+) -> TencentCloudResult<DownloadCertificateResponse> {
+    client.request(request).await
+}
+
+/// Call SSL `DownloadCertificate` with the blocking client.
+pub fn download_certificate_blocking(
+    client: &TencentCloudBlocking,
+    request: &DownloadCertificate<'_>,
+) -> TencentCloudResult<DownloadCertificateResponse> {
+    client.request(request)
 }
 
 #[cfg(test)]
@@ -86,11 +105,13 @@ mod tests {
                 "RequestId": "req-download-123"
             }
         }"#;
-        let parsed: DownloadCertificateResponse = serde_json::from_str(payload).unwrap();
+        let parsed: DownloadCertificateResponse =
+            serde_json::from_str(payload).expect("deserialize DownloadCertificateResponse");
         assert!(parsed
             .response
             .content
-            .unwrap()
+            .as_deref()
+            .expect("content present")
             .starts_with("UEsDBBQACAgIABdFg1Y"));
         assert_eq!(
             parsed.response.content_type,

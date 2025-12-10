@@ -1,4 +1,7 @@
-use crate::core::Endpoint;
+use crate::{
+    client::{TencentCloudAsync, TencentCloudBlocking},
+    core::{Endpoint, TencentCloudResult},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -90,7 +93,7 @@ pub struct CheckCertificateResult {
 
 #[derive(Debug, Deserialize)]
 pub struct CertificateExtra {
-    // 根据实际情况定义具体字段
+    // Flexible blob for API-specific fields returned by the service
     #[serde(flatten, default)]
     pub extra: HashMap<String, Value>,
 }
@@ -98,33 +101,27 @@ pub struct CertificateExtra {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct DvAuthDetail {
-    /// 证书域名验证记录Key
-    /// 注意：此字段可能返回 null，表示取不到有效值。
+    /// DNS validation record key; may be null when absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dv_auth_key: Option<String>,
 
-    /// 证书域名验证记录值
-    /// 注意：此字段可能返回 null，表示取不到有效值。
+    /// DNS validation record value; may be null when absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dv_auth_value: Option<String>,
 
-    /// 证书域名验证域名值
-    /// 注意：此字段可能返回 null，表示取不到有效值。
+    /// DNS validation record domain; may be null when absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dv_auth_domain: Option<String>,
 
-    /// 证书域名验证文件路径，仅FILE、FILE_PROXY使用
-    /// 注意：此字段可能返回 null，表示取不到有效值。
+    /// File validation path (FILE/FILE_PROXY only); may be null when absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dv_auth_path: Option<String>,
 
-    /// 证书域名验证子域名
-    /// 注意：此字段可能返回 null，表示取不到有效值。
+    /// DNS validation subdomain; may be null when absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dv_auth_key_sub_domain: Option<String>,
 
-    /// 证书域名验证信息，存在多个域名验证使用本字段
-    /// 注意：此字段可能返回 null，表示取不到有效值。
+    /// Validation info when multiple domains are validated; may be null when absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dv_auths: Option<Vec<DvAuths>>,
 }
@@ -132,32 +129,29 @@ pub struct DvAuthDetail {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct DvAuths {
-    /// 证书域名验证记录Key
+    /// DNS validation record key
     pub dv_auth_key: String,
 
-    /// 证书域名验证记录值
+    /// DNS validation record value
     pub dv_auth_value: String,
 
-    /// 证书域名验证域名值
+    /// DNS validation record domain
     pub dv_auth_domain: String,
 
-    /// 证书域名验证文件路径，仅FILE、FILE_PROXY使用
+    /// File validation path (FILE/FILE_PROXY only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dv_auth_path: Option<String>,
 
-    /// 证书域名验证子域名
+    /// DNS validation subdomain
     pub dv_auth_sub_domain: String,
 
-    /// 证书域名验证类型，取值：
-    /// TXT：DNS域名验证添加TXT记录
-    /// FILE：域名文件验证
-    /// CNAME：DNS域名验证添加CNAME记录
+    /// DNS validation type: TXT (DNS TXT), FILE (file), or CNAME (DNS CNAME)
     pub dv_auth_verify_type: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SubmittedData {
-    // 根据实际情况定义具体字段
+    // Flexible blob for API-specific fields returned by the service
     #[serde(flatten, default)]
     pub extra: HashMap<String, Value>,
 }
@@ -204,7 +198,7 @@ impl<'a> Endpoint for CheckCertificate<'a> {
     }
 
     fn region(&self) -> Option<Cow<'_, str>> {
-        // SSL接口不需要region参数
+        // SSL APIs do not require a region parameter
         None
     }
 
@@ -214,6 +208,22 @@ impl<'a> Endpoint for CheckCertificate<'a> {
         })
         .expect("serialize CheckCertificate payload")
     }
+}
+
+/// Call SSL `DescribeCertificate` with the async client.
+pub async fn check_certificate_async(
+    client: &TencentCloudAsync,
+    request: &CheckCertificate<'_>,
+) -> TencentCloudResult<CheckCertificateResponse> {
+    client.request(request).await
+}
+
+/// Call SSL `DescribeCertificate` with the blocking client.
+pub fn check_certificate_blocking(
+    client: &TencentCloudBlocking,
+    request: &CheckCertificate<'_>,
+) -> TencentCloudResult<CheckCertificateResponse> {
+    client.request(request)
 }
 
 #[cfg(test)]
@@ -240,7 +250,7 @@ mod tests {
                 "ProductZhName": "TrustAsia C1 DV Free",
                 "Domain": "example.com",
                 "Status": 1,
-                "StatusMsg": "已颁发",
+                "StatusMsg": "Issued",
                 "VerifyType": "DNS_AUTO",
                 "CertBeginTime": "2024-01-01 00:00:00",
                 "CertEndTime": "2024-04-01 23:59:59",
@@ -248,7 +258,7 @@ mod tests {
                 "InsertTime": "2023-12-31 10:30:00",
                 "CertificateId": "cert-abc123",
                 "PackageTypeName": "TrustAsia C1 DV Free",
-                "StatusName": "已颁发",
+                "StatusName": "Issued",
                 "SubjectAltName": ["www.example.com"],
                 "IsVip": false,
                 "IsWildcard": false,
@@ -258,7 +268,8 @@ mod tests {
                 "RequestId": "req-xyz-789"
             }
         }"#;
-        let parsed: CheckCertificateResponse = serde_json::from_str(payload).unwrap();
+        let parsed: CheckCertificateResponse =
+            serde_json::from_str(payload).expect("deserialize CheckCertificateResponse");
         let resp = &parsed.response;
         assert_eq!(resp.owner_uin, Some("1234567890".to_string()));
         assert_eq!(resp.project_id, Some("10086".to_string()));
@@ -271,7 +282,7 @@ mod tests {
         );
         assert_eq!(resp.domain, Some("example.com".to_string()));
         assert_eq!(resp.status, Some(1));
-        assert_eq!(resp.status_msg, Some("已颁发".to_string()));
+        assert_eq!(resp.status_msg, Some("Issued".to_string()));
         assert_eq!(resp.verify_type, Some("DNS_AUTO".to_string()));
         assert_eq!(
             resp.cert_begin_time,
@@ -281,7 +292,7 @@ mod tests {
         assert_eq!(resp.validity_period, Some("3".to_string()));
         assert_eq!(resp.insert_time, Some("2023-12-31 10:30:00".to_string()));
         assert_eq!(resp.certificate_id, Some("cert-abc123".to_string()));
-        assert_eq!(resp.status_name, Some("已颁发".to_string()));
+        assert_eq!(resp.status_name, Some("Issued".to_string()));
         assert_eq!(resp.is_vip, Some(false));
         assert_eq!(resp.is_wildcard, Some(false));
         assert_eq!(resp.is_dv, Some(true));

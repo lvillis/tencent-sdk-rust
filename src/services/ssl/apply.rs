@@ -1,4 +1,7 @@
-use crate::core::Endpoint;
+use crate::{
+    client::{TencentCloudAsync, TencentCloudBlocking},
+    core::{Endpoint, TencentCloudResult},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -17,42 +20,47 @@ pub struct ApplyCertificateResult {
     pub request_id: String,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "PascalCase")]
-struct ApplyCertificatePayload<'a> {
-    dv_auth_method: &'a str,
-    domain_name: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    project_id: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    package_type: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    contact_email: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    contact_phone: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    validity_period: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    csr_encrypt_algo: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    csr_key_parameter: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    csr_key_password: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    alias: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    old_certificate_id: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    package_id: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    delete_dns_auto_record: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    dns_names: Option<&'a [&'a str]>,
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum DvAuthMethod<'a> {
+    #[serde(rename = "DNS_AUTO")]
+    DnsAuto,
+    #[serde(rename = "DNS")]
+    Dns,
+    #[serde(rename = "FILE")]
+    File,
+    #[serde(rename = "FILE_PROXY")]
+    FileProxy,
+    Custom(&'a str),
+}
+
+impl<'a> From<&'a str> for DvAuthMethod<'a> {
+    fn from(value: &'a str) -> Self {
+        match value.to_uppercase().as_str() {
+            "DNS_AUTO" => DvAuthMethod::DnsAuto,
+            "DNS" => DvAuthMethod::Dns,
+            "FILE" => DvAuthMethod::File,
+            "FILE_PROXY" => DvAuthMethod::FileProxy,
+            _ => DvAuthMethod::Custom(value),
+        }
+    }
+}
+
+impl<'a> DvAuthMethod<'a> {
+    pub fn as_str(&self) -> &str {
+        match self {
+            DvAuthMethod::DnsAuto => "DNS_AUTO",
+            DvAuthMethod::Dns => "DNS",
+            DvAuthMethod::File => "FILE",
+            DvAuthMethod::FileProxy => "FILE_PROXY",
+            DvAuthMethod::Custom(value) => value,
+        }
+    }
 }
 
 /// Request payload for `ApplyCertificate`.
 pub struct ApplyCertificate<'a> {
-    pub dv_auth_method: &'a str,
+    pub dv_auth_method: DvAuthMethod<'a>,
     pub domain_name: &'a str,
     pub project_id: Option<i64>,
     pub package_type: Option<&'a str>,
@@ -71,7 +79,7 @@ pub struct ApplyCertificate<'a> {
 
 impl<'a> ApplyCertificate<'a> {
     /// Create a new certificate application request
-    pub fn new(dv_auth_method: &'a str, domain_name: &'a str) -> Self {
+    pub fn new(dv_auth_method: DvAuthMethod<'a>, domain_name: &'a str) -> Self {
         Self {
             dv_auth_method,
             domain_name,
@@ -168,6 +176,12 @@ impl<'a> ApplyCertificate<'a> {
         self.dns_names = Some(dns_names);
         self
     }
+
+    /// Override the DV auth method.
+    pub fn with_dv_auth_method(mut self, dv_auth_method: DvAuthMethod<'a>) -> Self {
+        self.dv_auth_method = dv_auth_method;
+        self
+    }
 }
 
 impl<'a> Endpoint for ApplyCertificate<'a> {
@@ -186,30 +200,74 @@ impl<'a> Endpoint for ApplyCertificate<'a> {
     }
 
     fn region(&self) -> Option<Cow<'_, str>> {
-        // SSL接口不需要region参数
+        // SSL APIs do not require a region parameter
         None
     }
 
     fn payload(&self) -> Value {
-        serde_json::to_value(ApplyCertificatePayload {
-            dv_auth_method: self.dv_auth_method,
-            domain_name: self.domain_name,
-            project_id: self.project_id,
-            package_type: self.package_type,
-            contact_email: self.contact_email,
-            contact_phone: self.contact_phone,
-            validity_period: self.validity_period,
-            csr_encrypt_algo: self.csr_encrypt_algo,
-            csr_key_parameter: self.csr_key_parameter,
-            csr_key_password: self.csr_key_password,
-            alias: self.alias,
-            old_certificate_id: self.old_certificate_id,
-            package_id: self.package_id,
-            delete_dns_auto_record: self.delete_dns_auto_record,
-            dns_names: self.dns_names,
-        })
-        .expect("serialize ApplyCertificate payload")
+        let mut payload = serde_json::json!({
+            "DvAuthMethod": self.dv_auth_method.as_str(),
+            "DomainName": self.domain_name,
+        });
+
+        if let Some(project_id) = self.project_id {
+            payload["ProjectId"] = serde_json::json!(project_id);
+        }
+        if let Some(package_type) = self.package_type {
+            payload["PackageType"] = serde_json::json!(package_type);
+        }
+        if let Some(contact_email) = self.contact_email {
+            payload["ContactEmail"] = serde_json::json!(contact_email);
+        }
+        if let Some(contact_phone) = self.contact_phone {
+            payload["ContactPhone"] = serde_json::json!(contact_phone);
+        }
+        if let Some(validity_period) = self.validity_period {
+            payload["ValidityPeriod"] = serde_json::json!(validity_period);
+        }
+        if let Some(csr_encrypt_algo) = self.csr_encrypt_algo {
+            payload["CsrEncryptAlgo"] = serde_json::json!(csr_encrypt_algo);
+        }
+        if let Some(csr_key_parameter) = self.csr_key_parameter {
+            payload["CsrKeyParameter"] = serde_json::json!(csr_key_parameter);
+        }
+        if let Some(csr_key_password) = self.csr_key_password {
+            payload["CsrKeyPassword"] = serde_json::json!(csr_key_password);
+        }
+        if let Some(alias) = self.alias {
+            payload["Alias"] = serde_json::json!(alias);
+        }
+        if let Some(old_certificate_id) = self.old_certificate_id {
+            payload["OldCertificateId"] = serde_json::json!(old_certificate_id);
+        }
+        if let Some(package_id) = self.package_id {
+            payload["PackageId"] = serde_json::json!(package_id);
+        }
+        if let Some(delete_dns_auto_record) = self.delete_dns_auto_record {
+            payload["DeleteDnsAutoRecord"] = serde_json::json!(delete_dns_auto_record);
+        }
+        if let Some(dns_names) = self.dns_names {
+            payload["DnsNames"] = serde_json::json!(dns_names);
+        }
+
+        payload
     }
+}
+
+/// Call SSL `ApplyCertificate` with the async client.
+pub async fn apply_certificate_async(
+    client: &TencentCloudAsync,
+    request: &ApplyCertificate<'_>,
+) -> TencentCloudResult<ApplyCertificateResponse> {
+    client.request(request).await
+}
+
+/// Call SSL `ApplyCertificate` with the blocking client.
+pub fn apply_certificate_blocking(
+    client: &TencentCloudBlocking,
+    request: &ApplyCertificate<'_>,
+) -> TencentCloudResult<ApplyCertificateResponse> {
+    client.request(request)
 }
 
 #[cfg(test)]
@@ -219,7 +277,7 @@ mod tests {
 
     #[test]
     fn apply_certificate_payload_serialization() {
-        let request = ApplyCertificate::new("DNS_AUTO", "example.com")
+        let request = ApplyCertificate::new(DvAuthMethod::DnsAuto, "example.com")
             .with_project_id(12345)
             .with_package_type("83")
             .with_contact_email("admin@example.com")
@@ -245,10 +303,13 @@ mod tests {
     #[test]
     fn apply_certificate_with_dns_names() {
         let dns_names = ["www.example.com", "api.example.com"];
-        let request = ApplyCertificate::new("DNS", "example.com").with_dns_names(&dns_names);
+        let request =
+            ApplyCertificate::new(DvAuthMethod::Dns, "example.com").with_dns_names(&dns_names);
 
         let payload = request.payload();
-        let dns_names_array = payload["DnsNames"].as_array().unwrap();
+        let dns_names_array = payload["DnsNames"]
+            .as_array()
+            .expect("DnsNames should be an array");
         assert_eq!(dns_names_array[0], json!("www.example.com"));
         assert_eq!(dns_names_array[1], json!("api.example.com"));
     }
@@ -261,7 +322,8 @@ mod tests {
                 "RequestId": "req-abc-123"
             }
         }"#;
-        let parsed: ApplyCertificateResponse = serde_json::from_str(payload).unwrap();
+        let parsed: ApplyCertificateResponse =
+            serde_json::from_str(payload).expect("deserialize ApplyCertificateResponse");
         assert_eq!(
             parsed.response.certificate_id,
             Some("cert-123456".to_string())
@@ -271,7 +333,7 @@ mod tests {
 
     #[test]
     fn builder_pattern_works_for_apply_certificate() {
-        let request = ApplyCertificate::new("DNS_AUTO", "tencent.com")
+        let request = ApplyCertificate::new(DvAuthMethod::DnsAuto, "tencent.com")
             .with_project_id(0)
             .with_package_type("83")
             .with_contact_email("ssl@tencent.com")
@@ -279,7 +341,7 @@ mod tests {
             .with_validity_period("3")
             .with_csr_encrypt_algo("RSA")
             .with_csr_key_parameter("2048")
-            .with_alias("生产证书")
+            .with_alias("prod-certificate")
             .with_delete_dns_auto_record(true);
 
         let payload = request.payload();
@@ -292,13 +354,13 @@ mod tests {
         assert_eq!(payload["ValidityPeriod"], json!("3"));
         assert_eq!(payload["CsrEncryptAlgo"], json!("RSA"));
         assert_eq!(payload["CsrKeyParameter"], json!("2048"));
-        assert_eq!(payload["Alias"], json!("生产证书"));
+        assert_eq!(payload["Alias"], json!("prod-certificate"));
         assert_eq!(payload["DeleteDnsAutoRecord"], json!(true));
     }
 
     #[test]
     fn apply_certificate_with_renewal() {
-        let request = ApplyCertificate::new("DNS", "example.com")
+        let request = ApplyCertificate::new(DvAuthMethod::Dns, "example.com")
             .with_old_certificate_id("LqQxgqUe")
             .with_validity_period("3");
 
@@ -311,7 +373,7 @@ mod tests {
 
     #[test]
     fn apply_certificate_with_ecc() {
-        let request = ApplyCertificate::new("FILE", "example.com")
+        let request = ApplyCertificate::new(DvAuthMethod::File, "example.com")
             .with_csr_encrypt_algo("ECC")
             .with_csr_key_parameter("prime256v1");
 

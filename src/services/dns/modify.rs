@@ -1,4 +1,8 @@
-use crate::core::Endpoint;
+use crate::{
+    client::{TencentCloudAsync, TencentCloudBlocking},
+    core::{Endpoint, TencentCloudResult},
+    services::dns::{RecordLine, RecordType},
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::borrow::Cow;
@@ -17,14 +21,15 @@ pub struct ModifyTXTRecordResult {
     pub request_id: String,
 }
 
-/// 请求参数结构体 - 修改 TXT 记录
+/// Request parameters for modifying a TXT record.
 pub struct ModifyTXTRecord<'a> {
     pub domain: &'a str,
-    pub record_line: &'a str,
+    pub sub_domain: &'a str,
+    pub record_line: RecordLine<'a>,
     pub value: &'a str,
+    pub record_type: RecordType<'a>,
     pub record_id: u64,
     pub domain_id: Option<u64>,
-    pub sub_domain: Option<&'a str>,
     pub record_line_id: Option<&'a str>,
     pub ttl: Option<u32>,
     pub status: Option<&'a str>,
@@ -32,14 +37,22 @@ pub struct ModifyTXTRecord<'a> {
 }
 
 impl<'a> ModifyTXTRecord<'a> {
-    pub fn new(domain: &'a str, record_line: &'a str, value: &'a str, record_id: u64) -> Self {
+    /// Create a TXT record update request (defaults `RecordType` to `"TXT"`).
+    pub fn new(
+        domain: &'a str,
+        sub_domain: &'a str,
+        record_line: &'a str,
+        value: &'a str,
+        record_id: u64,
+    ) -> Self {
         Self {
             domain,
-            record_line,
+            sub_domain,
+            record_line: record_line.into(),
             value,
+            record_type: RecordType::Txt,
             record_id,
             domain_id: None,
-            sub_domain: None,
             record_line_id: None,
             ttl: None,
             status: None,
@@ -49,11 +62,6 @@ impl<'a> ModifyTXTRecord<'a> {
 
     pub fn with_domain_id(mut self, domain_id: u64) -> Self {
         self.domain_id = Some(domain_id);
-        self
-    }
-
-    pub fn with_sub_domain(mut self, sub_domain: &'a str) -> Self {
-        self.sub_domain = Some(sub_domain);
         self
     }
 
@@ -76,6 +84,21 @@ impl<'a> ModifyTXTRecord<'a> {
         self.remark = Some(remark);
         self
     }
+
+    pub fn with_sub_domain(mut self, sub_domain: &'a str) -> Self {
+        self.sub_domain = sub_domain;
+        self
+    }
+
+    pub fn with_record_type(mut self, record_type: RecordType<'a>) -> Self {
+        self.record_type = record_type;
+        self
+    }
+
+    pub fn with_record_line(mut self, record_line: RecordLine<'a>) -> Self {
+        self.record_line = record_line;
+        self
+    }
 }
 
 impl<'a> Endpoint for ModifyTXTRecord<'a> {
@@ -86,7 +109,7 @@ impl<'a> Endpoint for ModifyTXTRecord<'a> {
     }
 
     fn action(&self) -> Cow<'static, str> {
-        Cow::Borrowed("ModifyTXTRecord")
+        Cow::Borrowed("ModifyRecord")
     }
 
     fn version(&self) -> Cow<'static, str> {
@@ -100,6 +123,8 @@ impl<'a> Endpoint for ModifyTXTRecord<'a> {
     fn payload(&self) -> Value {
         let mut payload = json!({
             "Domain": self.domain,
+            "SubDomain": self.sub_domain,
+            "RecordType": self.record_type,
             "RecordLine": self.record_line,
             "Value": self.value,
             "RecordId": self.record_id,
@@ -107,9 +132,6 @@ impl<'a> Endpoint for ModifyTXTRecord<'a> {
 
         if let Some(domain_id) = self.domain_id {
             payload["DomainId"] = json!(domain_id);
-        }
-        if let Some(sub_domain) = self.sub_domain {
-            payload["SubDomain"] = json!(sub_domain);
         }
         if let Some(record_line_id) = self.record_line_id {
             payload["RecordLineId"] = json!(record_line_id);
@@ -128,6 +150,22 @@ impl<'a> Endpoint for ModifyTXTRecord<'a> {
     }
 }
 
+/// Call DNSPod `ModifyRecord` with the async client.
+pub async fn modify_txt_record_async(
+    client: &TencentCloudAsync,
+    request: &ModifyTXTRecord<'_>,
+) -> TencentCloudResult<ModifyTXTRecordResponse> {
+    client.request(request).await
+}
+
+/// Call DNSPod `ModifyRecord` with the blocking client.
+pub fn modify_txt_record_blocking(
+    client: &TencentCloudBlocking,
+    request: &ModifyTXTRecord<'_>,
+) -> TencentCloudResult<ModifyTXTRecordResponse> {
+    client.request(request)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,19 +173,19 @@ mod tests {
 
     #[test]
     fn test_modify_txt_record_payload() {
-        let request = ModifyTXTRecord::new("example.com", "默认", "new-value", 123)
-            .with_sub_domain("www")
+        let request = ModifyTXTRecord::new("example.com", "www", "default", "new-value", 123)
             .with_ttl(300)
-            .with_remark("更新后的记录");
+            .with_remark("updated record");
 
         let payload = request.payload();
         assert_eq!(payload["Domain"], json!("example.com"));
-        assert_eq!(payload["RecordLine"], json!("默认"));
+        assert_eq!(payload["SubDomain"], json!("www"));
+        assert_eq!(payload["RecordType"], json!("TXT"));
+        assert_eq!(payload["RecordLine"], json!(RecordLine::Default.as_str()));
         assert_eq!(payload["Value"], json!("new-value"));
         assert_eq!(payload["RecordId"], json!(123));
-        assert_eq!(payload["SubDomain"], json!("www"));
         assert_eq!(payload["TTL"], json!(300));
-        assert_eq!(payload["Remark"], json!("更新后的记录"));
+        assert_eq!(payload["Remark"], json!("updated record"));
     }
 
     #[test]
@@ -159,16 +197,18 @@ mod tests {
             }
         }"#;
 
-        let response: ModifyTXTRecordResponse = serde_json::from_str(json).unwrap();
+        let response: ModifyTXTRecordResponse =
+            serde_json::from_str(json).expect("deserialize ModifyTXTRecordResponse");
         assert_eq!(response.response.record_id, Some(456));
         assert_eq!(response.response.request_id, "req-345678");
     }
 
     #[test]
     fn test_endpoint_implementation() {
-        let modify_request = ModifyTXTRecord::new("test.com", "默认", "value", 123);
+        let modify_request =
+            ModifyTXTRecord::new("test.com", "_acme-challenge", "default", "value", 123);
         assert_eq!(modify_request.service().as_ref(), "dnspod");
-        assert_eq!(modify_request.action().as_ref(), "ModifyTXTRecord");
+        assert_eq!(modify_request.action().as_ref(), "ModifyRecord");
         assert_eq!(modify_request.version().as_ref(), "2021-03-23");
         assert!(modify_request.region().is_none());
     }
