@@ -1,3 +1,8 @@
+## [0.1.5] - 2026-01-03
+
+### 🚜 Refactor
+
+- Overhaul SDK architecture
 ## [0.1.4] - 2025-12-10
 
 ### 🚀 Features
@@ -19,6 +24,7 @@
 - Update Cargo.toml
 - *(docs)* Update
 - Add rust-toolchain.toml
+- Release tencent-sdk version 0.1.4
 ## [0.1.3] - 2025-09-21
 
 ### 🚀 Features
