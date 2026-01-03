@@ -2,42 +2,88 @@
 name = "tencent-sdk"
 description = "📦 Tencent Cloud API SDK written in Rust"
 version = "0.1.4"
-edition = "2021"
+edition = "2024"
+rust-version = "1.92.0"
 license = "MIT"
 authors = ["lvillis<lvillis@outlook.com>"]
 repository = "https://github.com/lvillis/tencent-sdk-rust"
 homepage = "https://github.com/lvillis/tencent-sdk-rust"
 documentation = "https://github.com/lvillis/tencent-sdk-rust/blob/main/README.md"
-exclude = [
-    "/docs/",
-    "/tests/",
-    "/.config/",
-    "/.github/",
-    "/.idea/",
-    "/target/",
-    "/.justfile",
-    "/rust-toolchain.toml",
-    "/.gitignore",
-    "AGENTS.md",
-    "CONTEXT.md"
+include = [
+    "/Cargo.toml",
+    "/README.md",
+    "/README.zh-CN.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/SECURITY.md",
+    "/src/**",
+    "/examples/**",
 ]
 
+[workspace]
+resolver = "3"
+
+[workspace.dependencies]
+chrono = { version = "0.4.42", default-features = false, features = ["clock", "std"] }
+fastrand = { version = "2.3.0", default-features = false, features = ["std"] }
+hmac = { version = "0.12.1", default-features = false, features = ["std"] }
+http = { version = "1.4.0", default-features = false }
+httpdate = { version = "1.0.3", default-features = false }
+metrics = { version = "0.24.3", default-features = false }
+percent-encoding = { version = "2.3.2", default-features = false }
+reqwest = { version = "0.13.1", default-features = false, features = ["json"] }
+rustls = { version = "0.23.35", default-features = false, features = ["std", "tls12", "ring"] }
+serde = { version = "1.0.228", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1.0.148", default-features = false, features = ["std"] }
+sha2 = { version = "0.10.9", default-features = false, features = ["std"] }
+thiserror = { version = "2.0.17", default-features = false, features = ["std"] }
+tokio = { version = "1.48.0", default-features = false, features = ["macros", "rt", "rt-multi-thread", "time"] }
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+ureq = { version = "3.1.4", default-features = false }
+url = { version = "2.5.7", default-features = false, features = ["std"] }
+wiremock = { version = "0.6.5", default-features = false }
+
 [dependencies]
-tokio = { version = "1.48.0", default-features = false, features = ["rt", "rt-multi-thread", "macros", "time"] }
-reqwest = { version = "0.12.25", default-features = false, features = ["json", "rustls-tls", "blocking"] }
-chrono = { version = "0.4.42" }
-hmac = { version = "0.12.1" }
-sha2 = { version = "0.10.9" }
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = { version = "1.0.145" }
-async-trait = { version = "0.1.89" }
-http = { version = "1.4.0" }
-thiserror = { version = "2.0.17" }
-url = { version = "2.5.7" }
-fastrand = { version = "2.3.0" }
+chrono = { workspace = true }
+fastrand = { workspace = true }
+hmac = { workspace = true }
+http = { workspace = true }
+httpdate = { workspace = true }
+metrics = { workspace = true, optional = true }
+percent-encoding = { workspace = true }
+reqwest = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+ureq = { workspace = true, optional = true }
+url = { workspace = true }
+
+[features]
+default = ["async", "rustls"]
+
+# Core modes
+async = ["dep:reqwest", "dep:tokio"]
+blocking = ["dep:ureq"]
+
+# TLS selection for reqwest
+rustls = ["reqwest/rustls-no-provider", "dep:rustls"]
+native-tls = ["reqwest/native-tls"]
+
+# TLS selection for blocking (ureq)
+blocking-rustls = ["blocking", "ureq/rustls"]
+blocking-native-tls = ["blocking", "ureq/native-tls"]
+
+# Optional integrations
+tracing = ["dep:tracing"]
+metrics = ["dep:metrics"]
 
 [dev-dependencies]
-wiremock = { version = '0.6.5' }
+tokio = { workspace = true }
+wiremock = { workspace = true }
 
 [package.metadata.release]
 tag-prefix = ""

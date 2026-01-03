@@ -27,7 +27,7 @@
 
 ---
 
-本项目是一个用 Rust 编写的腾讯云 API SDK，帮助开发者轻松接入腾讯云服务。SDK 基于 Tokio 提供异步能力，封装了 TC3-HMAC-SHA256 请求签名、统一请求处理，以及按服务划分的模块化接口（如 CVM、Billing、Tag 等）。
+本项目是一个用 Rust 编写的腾讯云 API SDK，默认提供异步客户端，并通过 feature 提供可选的阻塞客户端；两者共享相同的 service 层、types 与错误模型。请求鉴权使用 TC3-HMAC-SHA256。
 
 ## Usage
 
@@ -39,59 +39,57 @@ tencent-sdk = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
+仅使用阻塞客户端（不依赖 Tokio）：
+
+```toml
+[dependencies]
+tencent-sdk = { version = "0.1", default-features = false, features = ["blocking-rustls"] }
+```
+
 ### 配置凭证并创建客户端
 
 ```rust
-use tencent_sdk::{
-    client::TencentCloudAsync,
-    core::{TencentCloudError, TencentCloudResult},
-    services::{
-        cvm::{DescribeInstances, DescribeInstancesResponse},
-        Filter,
-    },
-};
+use std::time::Duration;
+use tencent_sdk::types::{cvm::DescribeInstancesRequest, Filter};
+use tencent_sdk::{Auth, Client};
 
-async fn describe_instances() -> TencentCloudResult<DescribeInstancesResponse> {
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<(), tencent_sdk::Error> {
     let secret_id = std::env::var("TENCENT_SECRET_ID").expect("missing TENCENT_SECRET_ID");
     let secret_key = std::env::var("TENCENT_SECRET_KEY").expect("missing TENCENT_SECRET_KEY");
 
-    let client = TencentCloudAsync::builder(secret_id, secret_key)?
-        .no_system_proxy() // 可选：跳过系统代理
-        .with_default_region("ap-guangzhou")
-        .with_retry(3, std::time::Duration::from_millis(200))
+    let client = Client::builder_tencent_cloud()?
+        .auth(Auth::tc3(secret_id, secret_key))
+        .default_region("ap-guangzhou")
+        .no_system_proxy(true) // 可选：跳过系统代理
+        .retry(3, Duration::from_millis(200))
         .build()?;
 
-    let request = DescribeInstances::new()
-        .with_region("ap-guangzhou")
-        .with_limit(20)
+    let request = DescribeInstancesRequest::new()
+        .limit(20)
         .push_filter(Filter::new("instance-name", ["example"]));
 
-    client.request(&request).await
-}
-
-#[tokio::main(flavor = "multi_thread")]
-async fn main() -> Result<(), TencentCloudError> {
-    let response = describe_instances().await?;
+    let response = client.cvm().describe_instances(&request).await?;
     println!("instances: {:?}", response.response.total_count);
     Ok(())
 }
 ```
 
-阻塞客户端与异步接口一致：
+阻塞客户端与异步接口一致（不依赖 Tokio）：
 
 ```rust
-use tencent_sdk::{
-    client::TencentCloudBlocking,
-    services::billing::describe_account_balance_blocking,
-};
+use tencent_sdk::{Auth, BlockingClient};
 
-fn fetch_balance() -> tencent_sdk::core::TencentCloudResult<()> {
-    let client = TencentCloudBlocking::builder("secret", "key")?
-        .no_system_proxy()
-        .with_default_region("ap-guangzhou")
+fn main() -> Result<(), tencent_sdk::Error> {
+    let secret_id = std::env::var("TENCENT_SECRET_ID").expect("missing TENCENT_SECRET_ID");
+    let secret_key = std::env::var("TENCENT_SECRET_KEY").expect("missing TENCENT_SECRET_KEY");
+
+    let client = BlockingClient::builder_tencent_cloud()?
+        .auth(Auth::tc3(secret_id, secret_key))
+        .no_system_proxy(true)
         .build()?;
 
-    let result = describe_account_balance_blocking(&client)?;
+    let result = client.billing().describe_account_balance()?;
     println!("balance: {:?}", result.response.real_balance);
     Ok(())
 }
@@ -99,11 +97,14 @@ fn fetch_balance() -> tencent_sdk::core::TencentCloudResult<()> {
 
 ## Features
 
-- **Async & Blocking Clients**：Tokio 驱动的异步客户端与 reqwest 阻塞客户端，共享配置与重试逻辑。
-- **TC3 签名工具**：可复用的 TC3-HMAC-SHA256 头部生成。
-- **强类型服务接口**：按服务模块提供类型化请求/响应与构建器。
-- **错误分类**：按认证、限流、权限等分类的错误类型，便于恢复。
-- **测试覆盖**：Wiremock 驱动的集成流与确定性签名快照，避免回归。
+- **Feature flags**
+  - `async`（默认）TLS 后端：`rustls`（默认）或 `native-tls`
+  - `blocking`：`blocking-rustls` 或 `blocking-native-tls`
+  - 可选集成：`tracing`、`metrics`
+- **默认 async，可选 blocking**：`Client`（异步）+ `BlockingClient`（feature gated），共享 service 与 types。
+- **Public API 不暴露底层 HTTP 类型**：对外签名不包含 reqwest/ureq 的类型。
+- **TC3 签名**：内置 TC3-HMAC-SHA256 签名，`Debug` 输出默认脱敏凭证。
+- **可诊断错误模型**：`Error` 提供 status / request_id / body snippet 与 service 错误分类。
 
 # Implemented Interfaces
 

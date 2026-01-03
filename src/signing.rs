@@ -1,38 +1,46 @@
-use crate::core::Credentials;
+use crate::{Error, auth::Auth};
 use chrono::{TimeZone, Utc};
 use hmac::{Hmac, Mac};
+use http::{HeaderMap, HeaderValue, Method};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use thiserror::Error;
+use thiserror::Error as ThisError;
 
-pub type HmacSha256 = Hmac<Sha256>;
+pub(crate) type HmacSha256 = Hmac<Sha256>;
 
-#[derive(Debug, Error)]
+#[derive(Debug, ThisError)]
 #[non_exhaustive]
-pub enum SigningError {
+pub(crate) enum SigningError {
+    #[error("missing credentials")]
+    MissingCredentials,
+
     #[error("timestamp {0} is out of range for chrono")]
     InvalidTimestamp(i64),
 }
 
-pub struct SigningInput<'a> {
-    pub service: &'a str,
-    pub host: &'a str,
-    pub path: &'a str,
-    pub region: Option<&'a str>,
-    pub action: &'a str,
-    pub version: &'a str,
-    pub payload: &'a str,
-    pub timestamp: i64,
+pub(crate) struct SigningInput<'a> {
+    pub(crate) method: &'a Method,
+    pub(crate) service: &'a str,
+    pub(crate) host: &'a str,
+    pub(crate) path: &'a str,
+    pub(crate) canonical_query: &'a str,
+    pub(crate) region: Option<&'a str>,
+    pub(crate) action: &'a str,
+    pub(crate) version: &'a str,
+    pub(crate) payload: &'a str,
+    pub(crate) timestamp: i64,
 }
 
-pub fn build_tc3_headers(
-    credentials: &Credentials,
-    input: &SigningInput<'_>,
-) -> Result<HashMap<String, String>, SigningError> {
+pub(crate) fn build_tc3_headers(auth: &Auth, input: &SigningInput<'_>) -> Result<HeaderMap, Error> {
+    let Auth::Tc3(credentials) = auth else {
+        return Err(Error::signing(Box::new(SigningError::MissingCredentials)));
+    };
+
     let SigningInput {
+        method,
         service,
         host,
         path,
+        canonical_query,
         region,
         action,
         version,
@@ -41,98 +49,117 @@ pub fn build_tc3_headers(
     } = input;
 
     let algorithm = "TC3-HMAC-SHA256";
-    let canonical_query = "";
     let content_type = "application/json; charset=utf-8";
     let lower_action = action.to_ascii_lowercase();
-    let canonical_headers = format!(
-        "content-type:{}\nhost:{}\nx-tc-action:{}\n",
-        content_type, host, lower_action
-    );
+    let canonical_headers =
+        format!("content-type:{content_type}\nhost:{host}\nx-tc-action:{lower_action}\n");
     let signed_headers = "content-type;host;x-tc-action";
 
-    let hashed_payload = {
-        let mut hasher = Sha256::new();
-        hasher.update(payload.as_bytes());
-        format!("{:x}", hasher.finalize())
-    };
-
+    let hashed_payload = sha256_hex(payload.as_bytes());
     let canonical_request = format!(
-        "POST\n{}\n{}\n{}\n{}\n{}",
-        path, canonical_query, canonical_headers, signed_headers, hashed_payload
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        method.as_str(),
+        path,
+        canonical_query,
+        canonical_headers,
+        signed_headers,
+        hashed_payload
     );
 
     let datetime = Utc
         .timestamp_opt(*timestamp, 0)
         .single()
-        .ok_or(SigningError::InvalidTimestamp(*timestamp))?;
+        .ok_or(SigningError::InvalidTimestamp(*timestamp))
+        .map_err(|source| Error::signing(Box::new(source)))?;
     let date = datetime.format("%Y-%m-%d").to_string();
 
-    let hashed_canonical_request = {
-        let mut hasher = Sha256::new();
-        hasher.update(canonical_request.as_bytes());
-        format!("{:x}", hasher.finalize())
-    };
+    let hashed_canonical_request = sha256_hex(canonical_request.as_bytes());
+    let credential_scope = format!("{date}/{service}/tc3_request");
+    let string_to_sign =
+        format!("{algorithm}\n{timestamp}\n{credential_scope}\n{hashed_canonical_request}");
 
-    let credential_scope = format!("{}/{}/tc3_request", date, service);
-    let string_to_sign = format!(
-        "{}\n{}\n{}\n{}",
-        algorithm, timestamp, credential_scope, hashed_canonical_request
-    );
+    let secret_date = hmac_sha256(format!("TC3{}", credentials.secret_key()).as_bytes(), &date)?;
+    let secret_service = hmac_sha256(&secret_date, service)?;
+    let secret_signing = hmac_sha256(&secret_service, "tc3_request")?;
 
-    let secret_date = hmac_sha256(format!("TC3{}", credentials.secret_key()).as_bytes(), &date);
-    let secret_service = hmac_sha256(&secret_date, service);
-    let secret_signing = hmac_sha256(&secret_service, "tc3_request");
-
-    let signature = {
-        let mut mac =
-            HmacSha256::new_from_slice(&secret_signing).expect("HMAC can accept any key length");
-        mac.update(string_to_sign.as_bytes());
-        format!("{:x}", mac.finalize().into_bytes())
-    };
+    let mut mac = HmacSha256::new_from_slice(&secret_signing)
+        .map_err(|source| Error::signing(Box::new(source)))?;
+    mac.update(string_to_sign.as_bytes());
+    let signature = format!("{:x}", mac.finalize().into_bytes());
 
     let authorization = format!(
-        "{} Credential={}/{}, SignedHeaders={}, Signature={}",
-        algorithm,
+        "{algorithm} Credential={}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}",
         credentials.secret_id(),
-        credential_scope,
-        signed_headers,
-        signature
     );
 
-    let mut headers = HashMap::new();
-    headers.insert("Authorization".to_string(), authorization);
-    headers.insert("Content-Type".to_string(), content_type.to_string());
-    headers.insert("Host".to_string(), (*host).to_string());
-    headers.insert("X-TC-Action".to_string(), (*action).to_string());
-    headers.insert("X-TC-Version".to_string(), (*version).to_string());
-    headers.insert("X-TC-Timestamp".to_string(), timestamp.to_string());
-    if let Some(value) = region {
-        headers.insert("X-TC-Region".to_string(), (*value).to_string());
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "Authorization",
+        HeaderValue::from_str(&authorization).map_err(|source| Error::signing(Box::new(source)))?,
+    );
+    headers.insert(
+        "Content-Type",
+        HeaderValue::from_str(content_type).map_err(|source| Error::signing(Box::new(source)))?,
+    );
+    headers.insert(
+        "Host",
+        HeaderValue::from_str(host).map_err(|source| Error::signing(Box::new(source)))?,
+    );
+    headers.insert(
+        "X-TC-Action",
+        HeaderValue::from_str(action).map_err(|source| Error::signing(Box::new(source)))?,
+    );
+    headers.insert(
+        "X-TC-Version",
+        HeaderValue::from_str(version).map_err(|source| Error::signing(Box::new(source)))?,
+    );
+    headers.insert(
+        "X-TC-Timestamp",
+        HeaderValue::from_str(&timestamp.to_string())
+            .map_err(|source| Error::signing(Box::new(source)))?,
+    );
+    if let Some(region) = region {
+        headers.insert(
+            "X-TC-Region",
+            HeaderValue::from_str(region).map_err(|source| Error::signing(Box::new(source)))?,
+        );
     }
     if let Some(token) = credentials.token() {
-        headers.insert("X-TC-Token".to_string(), token.to_string());
+        headers.insert(
+            "X-TC-Token",
+            HeaderValue::from_str(token).map_err(|source| Error::signing(Box::new(source)))?,
+        );
     }
 
     Ok(headers)
 }
 
-fn hmac_sha256(key: &[u8], msg: &str) -> Vec<u8> {
-    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can accept any key length");
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+fn hmac_sha256(key: &[u8], msg: &str) -> Result<Vec<u8>, Error> {
+    let mut mac =
+        HmacSha256::new_from_slice(key).map_err(|source| Error::signing(Box::new(source)))?;
     mac.update(msg.as_bytes());
-    mac.finalize().into_bytes().to_vec()
+    Ok(mac.finalize().into_bytes().to_vec())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use http::Method;
     use serde_json::json;
 
     #[test]
     fn tc3_authorization_snapshot_matches_reference() {
-        let credentials = Credentials::new(
+        let auth = Auth::tc3(
             "AKIDz8krbsJ5yKBZQpn74WFkmLPx3xxxx",
             "Gu5t9xGARNpq86cd98joQYCN3Cozxxxx",
         );
+        let method = Method::POST;
         let payload = json!({
             "Limit": 1,
             "Filters": [
@@ -141,11 +168,13 @@ mod tests {
         })
         .to_string();
         let headers = build_tc3_headers(
-            &credentials,
+            &auth,
             &SigningInput {
+                method: &method,
                 service: "cvm",
                 host: "cvm.tencentcloudapi.com",
                 path: "/",
+                canonical_query: "",
                 region: Some("ap-guangzhou"),
                 action: "DescribeInstances",
                 version: "2017-03-12",
@@ -157,7 +186,9 @@ mod tests {
 
         let authorization = headers
             .get("Authorization")
-            .expect("authorization header exists");
+            .expect("authorization header exists")
+            .to_str()
+            .expect("authorization header is valid utf-8");
         assert_eq!(
             authorization,
             "TC3-HMAC-SHA256 Credential=AKIDz8krbsJ5yKBZQpn74WFkmLPx3xxxx/2019-02-25/cvm/tc3_request, SignedHeaders=content-type;host;x-tc-action, Signature=fb562f0e44f0c7f0afa9eff2998c6fc41e053d0efa3741b068332b545afdb587"

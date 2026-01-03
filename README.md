@@ -28,9 +28,8 @@
 
 ---
 
-This project is a Tencent Cloud API SDK written in Rust, designed to help developers integrate Tencent Cloud services
-easily. The SDK uses asynchronous programming (via Tokio) and encapsulates functionalities such as request signing (
-TC3-HMAC-SHA256), unified request handling, and modular service interfaces (e.g., CVM, Billing, Tag, etc.).
+Tencent Cloud API SDK for Rust. Async-first with an optional blocking client, sharing the same service layer, types and
+error model. Requests are authenticated using TC3-HMAC-SHA256.
 
 ## Usage
 
@@ -42,59 +41,57 @@ tencent-sdk = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
+Blocking-only (no Tokio):
+
+```toml
+[dependencies]
+tencent-sdk = { version = "0.1", default-features = false, features = ["blocking-rustls"] }
+```
+
 ### Configure credentials and create clients
 
 ```rust
-use tencent_sdk::{
-    client::TencentCloudAsync,
-    core::{TencentCloudError, TencentCloudResult},
-    services::{
-        cvm::{DescribeInstances, DescribeInstancesResponse},
-        Filter,
-    },
-};
+use std::time::Duration;
+use tencent_sdk::types::{cvm::DescribeInstancesRequest, Filter};
+use tencent_sdk::{Auth, Client};
 
-async fn describe_instances() -> TencentCloudResult<DescribeInstancesResponse> {
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<(), tencent_sdk::Error> {
     let secret_id = std::env::var("TENCENT_SECRET_ID").expect("missing TENCENT_SECRET_ID");
     let secret_key = std::env::var("TENCENT_SECRET_KEY").expect("missing TENCENT_SECRET_KEY");
 
-    let client = TencentCloudAsync::builder(secret_id, secret_key)?
-        .no_system_proxy() // optional convenience helper
-        .with_default_region("ap-guangzhou")
-        .with_retry(3, std::time::Duration::from_millis(200))
+    let client = Client::builder_tencent_cloud()?
+        .auth(Auth::tc3(secret_id, secret_key))
+        .default_region("ap-guangzhou")
+        .no_system_proxy(true)
+        .retry(3, Duration::from_millis(200))
         .build()?;
 
-    let request = DescribeInstances::new()
-        .with_region("ap-guangzhou")
-        .with_limit(20)
+    let request = DescribeInstancesRequest::new()
+        .limit(20)
         .push_filter(Filter::new("instance-name", ["example"]));
 
-    client.request(&request).await
-}
-
-#[tokio::main(flavor = "multi_thread")]
-async fn main() -> Result<(), TencentCloudError> {
-    let response = describe_instances().await?;
+    let response = client.cvm().describe_instances(&request).await?;
     println!("instances: {:?}", response.response.total_count);
     Ok(())
 }
 ```
 
-The blocking client mirrors the async API:
+The blocking client mirrors the async API (does not require Tokio):
 
 ```rust
-use tencent_sdk::{
-    client::TencentCloudBlocking,
-    services::billing::describe_account_balance_blocking,
-};
+use tencent_sdk::{Auth, BlockingClient};
 
-fn fetch_balance() -> tencent_sdk::core::TencentCloudResult<()> {
-    let client = TencentCloudBlocking::builder("secret", "key")?
-        .no_system_proxy()
-        .with_default_region("ap-guangzhou")
+fn main() -> Result<(), tencent_sdk::Error> {
+    let secret_id = std::env::var("TENCENT_SECRET_ID").expect("missing TENCENT_SECRET_ID");
+    let secret_key = std::env::var("TENCENT_SECRET_KEY").expect("missing TENCENT_SECRET_KEY");
+
+    let client = BlockingClient::builder_tencent_cloud()?
+        .auth(Auth::tc3(secret_id, secret_key))
+        .no_system_proxy(true)
         .build()?;
 
-    let result = describe_account_balance_blocking(&client)?;
+    let result = client.billing().describe_account_balance()?;
     println!("balance: {:?}", result.response.real_balance);
     Ok(())
 }
@@ -102,11 +99,14 @@ fn fetch_balance() -> tencent_sdk::core::TencentCloudResult<()> {
 
 ## Features
 
-- **Asynchronous & Blocking Clients**: Tokio-powered async client plus a reqwest blocking client sharing configuration and retry middleware.
-- **TC3 Signing Utilities**: Reusable helpers to construct compliant TC3-HMAC-SHA256 headers.
-- **Strongly Typed Services**: Service modules expose typed request/response models and ergonomic builders for filters, tags, and pagination.
-- **Actionable Error Taxonomy**: Service errors are classified (auth, throttled, forbidden, etc.) via `ServiceErrorKind` for easier recovery logic.
-- **Expanded Test Coverage**: Wiremock-backed integration flows and deterministic signing snapshots keep regressions in check.
+- **Feature flags**
+  - `async` (default) with TLS backend: `rustls` (default) or `native-tls`
+  - `blocking` via `blocking-rustls` or `blocking-native-tls`
+  - Optional integrations: `tracing`, `metrics`
+- **Async-first, optional blocking**: `Client` (async) + `BlockingClient` (feature gated), sharing the same services and types.
+- **No HTTP types in public API**: the SDK does not expose reqwest/ureq types in public signatures.
+- **TC3 signing**: built-in TC3-HMAC-SHA256 signing with credential redaction in `Debug` output.
+- **Actionable errors**: structured `Error` with status / request_id / body snippet and service classification.
 
 # Implemented Interfaces
 
