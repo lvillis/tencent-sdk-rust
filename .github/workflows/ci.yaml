@@ -29,7 +29,7 @@ jobs:
             cargo_flags: "--no-default-features --features async,rustls,blocking-rustls"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@master
